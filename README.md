@@ -149,7 +149,13 @@ reporter.leave_breadcrumb("ショップで回復薬を購入")
 
 ### 手を入れる
 
-`verify.gd` で、設定の読み込みから報告の組み立てまでが通ることを確かめられる。
+`verify.sh` で、設定の読み込みから報告の組み立て、送り先が無いときの動きまでが通ることを確かめられる。一時の置き場へ最小のプロジェクトを作り、この部品を写して回す。
+
+```
+./verify.sh
+```
+
+取り込み先のプロジェクトから直に回すこともできる。
 
 ```
 godot --headless --path <取り込み先のプロジェクト> --script addons/gmorn_issue_maker/verify.gd
@@ -161,7 +167,7 @@ godot --headless --path <取り込み先のプロジェクト> --script addons/g
 起動時に「Failed to instantiate an autoload」で落ちる。気づきにくいので置かないこと。
 
 単体で開いて触りたいときは、この部品を `addons/gmorn_issue_maker` として取り込んだ
-使い捨てのプロジェクトを別に作る。
+使い捨てのプロジェクトを別に作る。`verify.sh` がやっているのがまさにそれである。
 
 ## ライセンス
 
