@@ -324,7 +324,7 @@ func build_payload(title: String, description: String) -> Dictionary:
 		"body": build_body(description, context),
 		"labels": settings.labels,
 		"context": context,
-		"library": {"name": "GMornIssueMaker", "version": "0.2.0"},
+		"library": {"name": "GMornIssueMaker", "version": "0.2.1"},
 	}
 	if _screenshot != null:
 		payload["screenshot_png_base64"] = Marshalls.raw_to_base64(_screenshot.save_png_to_buffer())
@@ -405,7 +405,7 @@ func build_body(description: String, context: Dictionary) -> String:
 			lines.append("- " + String(entry))
 		lines.append("")
 	lines.append("---")
-	lines.append("報告時刻: %s / GMornIssueMaker 0.2.0" % context.get("報告時刻", ""))
+	lines.append("報告時刻: %s / GMornIssueMaker 0.2.1" % context.get("報告時刻", ""))
 	return "\n".join(lines)
 
 func _format_value(value: Variant) -> String:
