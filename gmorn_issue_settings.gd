@@ -17,6 +17,12 @@ extends RefCounted
 
 ## 送り先。中継サーバーのURL。空でも `repository` があれば報告できる。
 var endpoint := ""
+## 画像置き場のURL（MornImageServer など）。
+##
+## 入れておくと、GitHubの頁を開く方式でも画面の写しを先に上げて、本文へ
+## 画像として埋め込める。**画像を置くだけなので鍵は要らない**（Issueを作る
+## 権限は持たせない）。中継サーバーを立てずに、写しつきの報告が作れる。
+var image_endpoint := ""
 ## 報告先のリポジトリ（`owner/name`）。中継サーバーが無いときに使う。
 ##
 ## 中継サーバーが無くても、GitHubの「新しいIssue」の頁を見出しと本文を入れた
@@ -52,6 +58,7 @@ const SETTING_PREFIX := "gmorn_issue_maker/"
 func load_from_environment() -> void:
 	var settings := self
 	settings.endpoint = String(_setting("endpoint", settings.endpoint))
+	settings.image_endpoint = String(_setting("image_endpoint", settings.image_endpoint))
 	settings.repository = String(_setting("repository", settings.repository))
 	settings.shared_secret = String(_setting("shared_secret", settings.shared_secret))
 	settings.enabled = bool(_setting("enabled", settings.enabled))

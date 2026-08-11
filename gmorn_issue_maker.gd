@@ -261,6 +261,7 @@ func _send_report() -> void:
 	if settings.endpoint.is_empty():
 		# 中継サーバーが無くても、GitHubの頁を開けば報告はできる。
 		if not settings.repository.is_empty():
+			# 画像を上げるあいだ待つので await。呼び出し側は待たなくてよい。
 			_open_github_issue_page(title, payload)
 			return
 		_finish(false, "", "送り先も報告先のリポジトリも設定されていません。", payload)
@@ -278,15 +279,21 @@ func _send_report() -> void:
 ## こちらが鍵を持たなくてよい。中継サーバーを立てるまでの間や、鍵を置きたく
 ## ない配り方でも、報告の口を閉じずに済む。
 ##
-## 画面の写しだけは頁へ自動で入れられない（URLに画像は載せられない）。
-## 写しをファイルへ残し、その場所を写字板へ入れてから開く。報告する人は
-## 本文の欄へ貼るか引きずり込むだけでよい。
+## 画面の写しは、URLへ直接載せられない。`image_endpoint` があれば先に画像置き場へ
+## 上げて、本文に画像として埋め込む。無ければ従来どおり、写しの場所を伝えて
+## 貼ってもらう。
 func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 	var body := String(payload.get("body", ""))
-	var screenshot_path := _save_screenshot_file()
-	if not screenshot_path.is_empty():
-		body = "（画面の写し: %s をこの欄へ貼ってください）\n\n%s" % [screenshot_path, body]
-		DisplayServer.clipboard_set(screenshot_path)
+	var screenshot_path := ""
+	var image_url := await _upload_screenshot()
+	if not image_url.is_empty():
+		# 画像は本文の先頭へ置く。読む側が最初に見るのは絵である。
+		body = "![報告時の画面](%s)\n\n%s" % [image_url, body]
+	else:
+		screenshot_path = _save_screenshot_file()
+		if not screenshot_path.is_empty():
+			body = "（画面の写し: %s をこの欄へ貼ってください）\n\n%s" % [screenshot_path, body]
+			DisplayServer.clipboard_set(screenshot_path)
 	var head := "https://github.com/%s/issues/new?title=%s&body=" % [
 		settings.repository, title.uri_encode()]
 	var tail := ""
@@ -298,7 +305,9 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 	OS.shell_open(url)
 	var saved := _save_fallback(payload)
 	var message := "GitHubの報告ページを開きました。"
-	if not screenshot_path.is_empty():
+	if not image_url.is_empty():
+		message += "\n画面の写しは本文へ入れてあります。"
+	elif not screenshot_path.is_empty():
 		message += "\n画面の写しの場所を写字板へ入れました。本文の欄へ貼ってください。"
 	if not saved.is_empty():
 		message += "\n控えは %s に残しました。" % saved
@@ -329,6 +338,38 @@ func _fit_to_url(body: String, reserved: int) -> String:
 		else:
 			high = middle - 1
 	return body.substr(0, low) + suffix
+
+## 画面の写しを画像置き場へ上げ、そのURLを返す。上げられなければ空を返す。
+##
+## 置き場は画像を預かるだけで、Issueを作る権限は持たない。だからURLを配布物へ
+## 入れてよい。GitHubへ直接上げる道は書き込み権限のあるトークンが要るので、
+## 配布するアプリからは使えない。
+##
+## 上げられなくても報告は止めない。写しの場所を伝える従来の道へ落ちる。
+func _upload_screenshot() -> String:
+	if _screenshot == null or settings.image_endpoint.is_empty():
+		return ""
+	var png := _screenshot.save_png_to_buffer()
+	if png.is_empty():
+		return ""
+	var uploader := HTTPRequest.new()
+	uploader.timeout = REQUEST_TIMEOUT
+	add_child(uploader)
+	var error := uploader.request_raw(
+		settings.image_endpoint, PackedStringArray(["Content-Type: image/png"]),
+		HTTPClient.METHOD_POST, png)
+	if error != OK:
+		uploader.queue_free()
+		return ""
+	var result: Array = await uploader.request_completed
+	uploader.queue_free()
+	# [result, response_code, headers, body]
+	if int(result[1]) < 200 or int(result[1]) >= 300:
+		return ""
+	var parsed = JSON.parse_string((result[3] as PackedByteArray).get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return ""
+	return String(parsed.get("url", ""))
 
 ## 画面の写しをファイルへ残し、その場所を返す。撮れていなければ空を返す。
 func _save_screenshot_file() -> String:
