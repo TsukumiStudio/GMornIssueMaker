@@ -255,7 +255,11 @@ func _send_report() -> void:
 	report_started.emit()
 	var payload := build_payload(title, _body_edit.text)
 	if settings.endpoint.is_empty():
-		_finish(false, "", "送り先が設定されていません。", payload)
+		# 中継サーバーが無くても、GitHubの頁を開けば報告はできる。
+		if not settings.repository.is_empty():
+			_open_github_issue_page(title, payload)
+			return
+		_finish(false, "", "送り先も報告先のリポジトリも設定されていません。", payload)
 		return
 	var headers := PackedStringArray(["Content-Type: application/json"])
 	if not settings.shared_secret.is_empty():
@@ -263,6 +267,51 @@ func _send_report() -> void:
 	var error := _request.request(settings.endpoint, headers, HTTPClient.METHOD_POST, JSON.stringify(payload))
 	if error != OK:
 		_finish(false, "", "送れませんでした（%d）。" % error, payload)
+
+## GitHubの「新しいIssue」の頁を、見出しと本文を入れた状態で開く。
+##
+## 中継サーバーが無いときの道。書き込みはその人のGitHubの権限で行われるので、
+## こちらが鍵を持たなくてよい。中継サーバーを立てるまでの間や、鍵を置きたく
+## ない配り方でも、報告の口を閉じずに済む。
+##
+## 画面の写しだけは頁へ自動で入れられない（URLに画像は載せられない）。
+## 写しをファイルへ残し、その場所を写字板へ入れてから開く。報告する人は
+## 本文の欄へ貼るか引きずり込むだけでよい。
+func _open_github_issue_page(title: String, payload: Dictionary) -> void:
+	var body := String(payload.get("body", ""))
+	var screenshot_path := _save_screenshot_file()
+	if not screenshot_path.is_empty():
+		body = "（画面の写し: %s をこの欄へ貼ってください）\n\n%s" % [screenshot_path, body]
+		DisplayServer.clipboard_set(screenshot_path)
+	# GitHubのURLはおよそ8キロバイトまで。長い本文は切って、全文は控えに残す。
+	if body.length() > 6000:
+		body = body.substr(0, 6000) + "\n\n（以下省略。全文は報告の控えにあります）"
+	var url := "https://github.com/%s/issues/new?title=%s&body=%s" % [
+		settings.repository, title.uri_encode(), body.uri_encode()]
+	var labels: Array = payload.get("labels", [])
+	if not labels.is_empty():
+		url += "&labels=" + ",".join(PackedStringArray(labels)).uri_encode()
+	OS.shell_open(url)
+	var saved := _save_fallback(payload)
+	var message := "GitHubの報告ページを開きました。"
+	if not screenshot_path.is_empty():
+		message += "\n画面の写しの場所を写字板へ入れました。本文の欄へ貼ってください。"
+	if not saved.is_empty():
+		message += "\n控えは %s に残しました。" % saved
+	_sending = false
+	_send_button.disabled = false
+	_status_label.text = message
+	report_finished.emit(true, url, message)
+
+## 画面の写しをファイルへ残し、その場所を返す。撮れていなければ空を返す。
+func _save_screenshot_file() -> String:
+	if _screenshot == null:
+		return ""
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(FALLBACK_DIRECTORY))
+	var path := "%s/screenshot_%s.png" % [FALLBACK_DIRECTORY, _file_stamp()]
+	if _screenshot.save_png(path) != OK:
+		return ""
+	return ProjectSettings.globalize_path(path)
 
 ## 送る中身を組み立てる。中継サーバーはこの形を受け取る。
 ##
@@ -275,7 +324,7 @@ func build_payload(title: String, description: String) -> Dictionary:
 		"body": build_body(description, context),
 		"labels": settings.labels,
 		"context": context,
-		"library": {"name": "GMornIssueMaker", "version": "0.1.1"},
+		"library": {"name": "GMornIssueMaker", "version": "0.2.0"},
 	}
 	if _screenshot != null:
 		payload["screenshot_png_base64"] = Marshalls.raw_to_base64(_screenshot.save_png_to_buffer())
@@ -356,7 +405,7 @@ func build_body(description: String, context: Dictionary) -> String:
 			lines.append("- " + String(entry))
 		lines.append("")
 	lines.append("---")
-	lines.append("報告時刻: %s / GMornIssueMaker 0.1.1" % context.get("報告時刻", ""))
+	lines.append("報告時刻: %s / GMornIssueMaker 0.2.0" % context.get("報告時刻", ""))
 	return "\n".join(lines)
 
 func _format_value(value: Variant) -> String:
@@ -398,13 +447,18 @@ func _finish(success: bool, url: String, message: String, payload: Dictionary) -
 
 func _save_fallback(payload: Dictionary) -> String:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(FALLBACK_DIRECTORY))
-	var path := "%s/report_%s.json" % [FALLBACK_DIRECTORY, Time.get_datetime_string_from_system(false, false).replace(":", "").replace("-", "").replace("T", "_")]
+	var path := "%s/report_%s.json" % [FALLBACK_DIRECTORY, _file_stamp()]
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		return ""
 	file.store_string(JSON.stringify(payload, "\t"))
 	file.close()
 	return ProjectSettings.globalize_path(path)
+
+## ファイル名へ使える時刻。記号を落として並び順が保てる形にする。
+func _file_stamp() -> String:
+	return Time.get_datetime_string_from_system(false, false) \
+		.replace(":", "").replace("-", "").replace("T", "_")
 
 func _application_version() -> String:
 	var version: Variant = ProjectSettings.get_setting("application/config/version", "")

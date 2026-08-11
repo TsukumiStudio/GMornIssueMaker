@@ -15,8 +15,15 @@ extends RefCounted
 ## 置く。合言葉のように配りたくないものは環境変数で渡す。どちらにも書けるが、
 ## 配布物に入れた鍵は取り出せることを前提に決める。
 
-## 送り先。中継サーバーのURL。空なら送らずに書き出しだけを行う。
+## 送り先。中継サーバーのURL。空でも `repository` があれば報告できる。
 var endpoint := ""
+## 報告先のリポジトリ（`owner/name`）。中継サーバーが無いときに使う。
+##
+## 中継サーバーが無くても、GitHubの「新しいIssue」の頁を見出しと本文を入れた
+## 状態で開けば報告はできる。書き込みはその人のGitHubの権限で行われるので、
+## こちらが鍵を持つ必要が無い。画面の写しだけは自動で添えられないため、
+## 場所を伝えて貼ってもらう。
+var repository := ""
 ## 中継サーバーが受け付けるときに確かめる合言葉。空なら付けない。
 var shared_secret := ""
 ## 報告ボタンを出すかどうか。既定では、書き出したビルドでも出す。
@@ -45,6 +52,7 @@ const SETTING_PREFIX := "gmorn_issue_maker/"
 func load_from_environment() -> void:
 	var settings := self
 	settings.endpoint = String(_setting("endpoint", settings.endpoint))
+	settings.repository = String(_setting("repository", settings.repository))
 	settings.shared_secret = String(_setting("shared_secret", settings.shared_secret))
 	settings.enabled = bool(_setting("enabled", settings.enabled))
 	settings.button_corner = String(_setting("button_corner", settings.button_corner))
@@ -61,6 +69,7 @@ func load_from_environment() -> void:
 		settings.labels = Array(String(labels).split(",", false))
 	# 環境変数は最後に効かせる。手元だけ送り先を変えたいときに使う。
 	settings.endpoint = _environment("GMORN_ISSUE_ENDPOINT", settings.endpoint)
+	settings.repository = _environment("GMORN_ISSUE_REPOSITORY", settings.repository)
 	settings.shared_secret = _environment("GMORN_ISSUE_SECRET", settings.shared_secret)
 	var disabled := OS.get_environment("GMORN_ISSUE_DISABLED")
 	if disabled == "1" or disabled.to_lower() == "true":

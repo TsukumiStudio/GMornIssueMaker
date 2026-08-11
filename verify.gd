@@ -43,6 +43,31 @@ func _run() -> void:
 	assert(payload.has("labels") and payload.has("context"), "送る中身が足りない")
 	assert(String(payload["library"]["name"]) == "GMornIssueMaker", "名乗りが無い")
 
+	# 中継サーバーが無くても、リポジトリが決まっていれば報告の口は開く。
+	reporter.settings.endpoint = ""
+	reporter.settings.repository = "owner/name"
+	# GDScriptのラムダは外の変数を値で写す。中で書き換えても外へは戻らないので、
+	# 入れ物（配列）を渡して、その中身を書き換える。
+	var opened: Array[String] = [""]
+	reporter.report_finished.connect(func(_success: bool, url: String, _message: String) -> void:
+		opened[0] = url)
+	reporter._title_edit.text = "落ちる"
+	reporter._body_edit.text = "押したら落ちた"
+	reporter._send_report()
+	await process_frame
+	assert(opened[0].begins_with("https://github.com/owner/name/issues/new?"),
+		"GitHubの頁を開く形になっていない: %s" % opened[0])
+	assert(opened[0].contains("title="), "見出しが入っていない")
+	assert(opened[0].contains("body="), "本文が入っていない")
+
+	# どちらも無いときは開かない。開き先が無いまま開くと何も起きずに終わる。
+	reporter.settings.repository = ""
+	opened[0] = ""
+	reporter._title_edit.text = "行き先なし"
+	reporter._send_report()
+	await process_frame
+	assert(opened[0].is_empty(), "行き先が無いのに開こうとした")
+
 	print("見出し=%d行 本文=%d文字" % [body.split("\n").size(), body.length()])
 	print("GMORN ISSUE MAKER VERIFY: PASS")
 	quit(0)
