@@ -149,13 +149,19 @@ reporter.leave_breadcrumb("ショップで回復薬を購入")
 
 ### 手を入れる
 
-リポジトリ直下の `project.godot` と `verify.gd` は、この部品だけを開いて手を入れるためのもの。取り込む側は使わない。
+`verify.gd` で、設定の読み込みから報告の組み立てまでが通ることを確かめられる。
 
 ```
-godot --headless --path addons/gmorn_issue_maker --script verify.gd
+godot --headless --path <取り込み先のプロジェクト> --script addons/gmorn_issue_maker/verify.gd
 ```
 
-で、設定の読み込みから報告の組み立てまでが通ることを確かめられる。
+**リポジトリ直下に `project.godot` は置かない。** 置くとGodotがそこを別のプロジェクトと見なし、
+**そのフォルダを丸ごとスキャンから外す**。submoduleとして取り込んだ場合、
+エディタで実行するぶんには動くのに、書き出した実行ファイルにだけアドオンが入らず、
+起動時に「Failed to instantiate an autoload」で落ちる。気づきにくいので置かないこと。
+
+単体で開いて触りたいときは、この部品を `addons/gmorn_issue_maker` として取り込んだ
+使い捨てのプロジェクトを別に作る。
 
 ## ライセンス
 
