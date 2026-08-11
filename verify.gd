@@ -22,21 +22,21 @@ func _run() -> void:
 	await process_frame
 
 	reporter.add_context_provider(func() -> Dictionary:
-		return {"日数": 3, "所持金": 12345})
-	reporter.leave_breadcrumb("勤務を開始")
-	reporter.leave_breadcrumb("スマホを開いた")
+		return {"面": "3-2", "残機": 3})
+	reporter.leave_breadcrumb("面3を開始")
+	reporter.leave_breadcrumb("ショップを開いた")
 
 	var context: Dictionary = reporter.collect_context()
 	for section: String in ["アプリ", "環境", "画面", "実行", "ゲームの状況", "直前の出来事"]:
 		assert(context.has(section), "%s が無い" % section)
-	assert(int(context["ゲームの状況"]["日数"]) == 3, "ゲーム固有の値が入らない")
+	assert(int(context["ゲームの状況"]["残機"]) == 3, "アプリ固有の値が入らない")
 	assert(context["直前の出来事"].size() == 2, "出来事が入らない")
 
 	var body: String = reporter.build_body("押したら落ちた", context)
 	for heading: String in ["## 何が起きたか", "## 環境", "## ゲームの状況", "## 直前の出来事"]:
 		assert(body.contains(heading), "%s の見出しが無い" % heading)
 	assert(body.contains("押したら落ちた"), "書いた内容が入らない")
-	assert(body.contains("| 日数 | 3 |"), "表の形になっていない")
+	assert(body.contains("| 残機 | 3 |"), "表の形になっていない")
 
 	var payload: Dictionary = reporter.build_payload("落ちる", "押したら落ちた")
 	assert(String(payload["title"]) == "落ちる", "見出しが入らない")

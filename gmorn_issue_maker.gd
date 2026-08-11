@@ -80,7 +80,7 @@ func _ready() -> void:
 ##
 ## 例:
 ##   GMornIssueMaker.add_context_provider(func() -> Dictionary:
-##       return {"日数": GameState.day(), "所持金": GameState.money()})
+##       return {"面": current_stage_name(), "残機": player.lives})
 func add_context_provider(provider: Callable) -> void:
 	if not _context_providers.has(provider):
 		_context_providers.append(provider)
