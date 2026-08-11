@@ -14,8 +14,20 @@
 //
 // 画面は Issue へ直接貼れないため、リポジトリの `gmorn-issue-screenshots`
 // ブランチへ置いてから本文にリンクを差し込む。ブランチが無ければ作る。
+//
+// 荒らし対策:
+//   公開アプリだと、この送り先URLも合言葉も配布物から取り出せる。誰でも叩ける
+//   前提で、素通しにしない。大きさの上限は常に効く。回数の上限は KV を
+//   `RATE_LIMIT` という名前で結んだときだけ効く（無ければ素通し）。
+//     wrangler kv namespace create RATE_LIMIT
+//   ダッシュボードの Rate limiting rules を使ってもよい。
 
 const SCREENSHOT_BRANCH = "gmorn-issue-screenshots";
+
+const MAX_BODY_BYTES = 3 * 1024 * 1024;  // 画像込みの受け取り上限
+const MAX_TITLE_LENGTH = 200;
+const MAX_TEXT_LENGTH = 20000;
+const RATE_LIMIT_PER_HOUR = 20;  // 同じ相手から1時間に受け付ける件数
 
 export default {
   async fetch(request, env) {
@@ -28,6 +40,15 @@ export default {
     if (env.SHARED_SECRET && request.headers.get("X-GMorn-Token") !== env.SHARED_SECRET) {
       return json({ error: "合言葉が違います" }, 401);
     }
+    // 大きすぎるものは読む前に断る。読んでから測ると、その時点で食わされている。
+    const declared = Number(request.headers.get("Content-Length") || "0");
+    if (declared > MAX_BODY_BYTES) {
+      return json({ error: "大きすぎます" }, 413);
+    }
+    const limited = await checkRateLimit(env, request);
+    if (limited) {
+      return limited;
+    }
 
     let payload;
     try {
@@ -35,12 +56,12 @@ export default {
     } catch (_) {
       return json({ error: "JSON として読めません" }, 400);
     }
-    const title = (payload.title || "").trim();
+    const title = (payload.title || "").trim().slice(0, MAX_TITLE_LENGTH);
     if (!title) {
       return json({ error: "title が空です" }, 400);
     }
 
-    let body = payload.body || "";
+    let body = (payload.body || "").slice(0, MAX_TEXT_LENGTH);
     if (payload.screenshot_png_base64) {
       try {
         const url = await uploadScreenshot(env, payload.screenshot_png_base64);
@@ -113,6 +134,24 @@ async function githubRequest(env, path, method, body) {
     throw new Error(`GitHub ${response.status}: ${text.slice(0, 200)}`);
   }
   return text ? JSON.parse(text) : {};
+}
+
+// 同じ相手からの連投を抑える。KV を `RATE_LIMIT` で結んでいなければ何もしない。
+// 抑えられなかったときに落とすより、受け取って動くほうを選ぶ（報告の口は塞がない）。
+async function checkRateLimit(env, request) {
+  if (!env.RATE_LIMIT) {
+    return null;
+  }
+  const who = request.headers.get("CF-Connecting-IP") || "unknown";
+  const hour = new Date().toISOString().slice(0, 13);
+  const key = `rate:${who}:${hour}`;
+  const seen = Number((await env.RATE_LIMIT.get(key)) || "0");
+  if (seen >= RATE_LIMIT_PER_HOUR) {
+    return json({ error: "しばらく待ってから送ってください" }, 429);
+  }
+  // 1時間で消える。取りこぼしても実害は無いので、書き込みの失敗は無視する。
+  await env.RATE_LIMIT.put(key, String(seen + 1), { expirationTtl: 3600 }).catch(() => {});
+  return null;
 }
 
 function json(value, status) {
