@@ -26,6 +26,10 @@ const BREADCRUMB_LIMIT := 30
 ## 画面を送るときの縦の上限。原寸のままだと数メガバイトになり、
 ## 中継サーバー側で弾かれやすい。
 const SCREENSHOT_MAX_HEIGHT := 1080
+
+## GitHubの「新しいIssue」の頁を開くURLの上限。実際は8キロバイト程度まで通るが、
+## 途中の経路（ブラウザやプロキシ）で切られないよう余裕を見る。
+const URL_MAX_LENGTH := 6000
 ## ボタンに出す虫の絵。
 ##
 ## 文字で「不具合報告」と出すと画面の隅を大きく占める。絵文字は環境の書体に
@@ -283,14 +287,14 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 	if not screenshot_path.is_empty():
 		body = "（画面の写し: %s をこの欄へ貼ってください）\n\n%s" % [screenshot_path, body]
 		DisplayServer.clipboard_set(screenshot_path)
-	# GitHubのURLはおよそ8キロバイトまで。長い本文は切って、全文は控えに残す。
-	if body.length() > 6000:
-		body = body.substr(0, 6000) + "\n\n（以下省略。全文は報告の控えにあります）"
-	var url := "https://github.com/%s/issues/new?title=%s&body=%s" % [
-		settings.repository, title.uri_encode(), body.uri_encode()]
+	var head := "https://github.com/%s/issues/new?title=%s&body=" % [
+		settings.repository, title.uri_encode()]
+	var tail := ""
 	var labels: Array = payload.get("labels", [])
 	if not labels.is_empty():
-		url += "&labels=" + ",".join(PackedStringArray(labels)).uri_encode()
+		tail = "&labels=" + ",".join(PackedStringArray(labels)).uri_encode()
+	body = _fit_to_url(body, head.length() + tail.length())
+	var url := head + body.uri_encode() + tail
 	OS.shell_open(url)
 	var saved := _save_fallback(payload)
 	var message := "GitHubの報告ページを開きました。"
@@ -302,6 +306,29 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 	_send_button.disabled = false
 	_status_label.text = message
 	report_finished.emit(true, url, message)
+
+## URLの長さに収まるところまで本文を切る。全文は控えに残るので情報は失われない。
+##
+## **文字数ではなくURLエンコード後の長さで測る。** 日本語は1文字が %E3%81%82 の
+## 9バイトになるので、6000文字で切ると54000バイトのURLになり、GitHubが受け取れない。
+## 実際に「Issueが立てられない」という報告があった。
+func _fit_to_url(body: String, reserved: int) -> String:
+	if reserved + body.uri_encode().length() <= URL_MAX_LENGTH:
+		return body
+	var suffix := "\n\n（以下省略。全文は報告の控えにあります）"
+	var room := URL_MAX_LENGTH - reserved - suffix.uri_encode().length()
+	if room <= 0:
+		return suffix
+	# 1文字あたりのバイト数は文字によって違うので、入る長さを二分探索で決める
+	var low := 0
+	var high := body.length()
+	while low < high:
+		var middle := (low + high + 1) / 2
+		if body.substr(0, middle).uri_encode().length() <= room:
+			low = middle
+		else:
+			high = middle - 1
+	return body.substr(0, low) + suffix
 
 ## 画面の写しをファイルへ残し、その場所を返す。撮れていなければ空を返す。
 func _save_screenshot_file() -> String:
