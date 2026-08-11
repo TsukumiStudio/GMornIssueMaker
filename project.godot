@@ -1,0 +1,19 @@
+; GMornIssueMaker を単体で開いて手を入れるためのプロジェクト。
+; 取り込む側はこのファイルを使わない。addons/gmorn_issue_maker だけを見る。
+
+config_version=5
+
+[application]
+
+config/name="GMornIssueMaker"
+config/version="0.1.0"
+config/features=PackedStringArray("4.7")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
+[gmorn_issue_maker]
+
+endpoint=""
