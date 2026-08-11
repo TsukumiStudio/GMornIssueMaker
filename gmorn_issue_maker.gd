@@ -30,6 +30,15 @@ const SCREENSHOT_MAX_HEIGHT := 1080
 ## GitHubの「新しいIssue」の頁を開くURLの上限。実際は8キロバイト程度まで通るが、
 ## 途中の経路（ブラウザやプロキシ）で切られないよう余裕を見る。
 const URL_MAX_LENGTH := 6000
+
+## 報告の窓は画面いっぱいから余白を取って出す。取り込む側の設計解像度が
+## 分からないので、固定の大きさにすると広い画面では豆粒になる。
+const PANEL_MARGIN_RATIO := 0.06
+
+## 既定の文字の大きさが読める画面の高さ。これより広い画面では、その比で拡大する。
+## 縦2142のような設計だと、既定の16pxは実質読めない。
+const UI_REFERENCE_HEIGHT := 720.0
+const UI_MAX_SCALE := 6.0
 ## ボタンに出す虫の絵。
 ##
 ## 文字で「不具合報告」と出すと画面の隅を大きく占める。絵文字は環境の書体に
@@ -64,6 +73,10 @@ var _screenshot: Image
 var _context_providers: Array[Callable] = []
 var _breadcrumbs: Array[String] = []
 var _sending := false
+var _headline: Label
+var _captions: Array[Label] = []
+var _cancel_button: Button
+var _box: VBoxContainer
 
 func _ready() -> void:
 	settings = SETTINGS_SCRIPT.new()
@@ -110,6 +123,7 @@ func set_button_visible(value: bool) -> void:
 func open_report_form() -> void:
 	if _sending or not is_instance_valid(_panel) or _panel.visible:
 		return
+	_fit_to_screen()
 	await _capture_screenshot()
 	_title_edit.text = ""
 	_body_edit.text = ""
@@ -155,6 +169,28 @@ func _button_preset() -> int:
 		_:
 			return Control.PRESET_TOP_RIGHT
 
+## 画面の広さに合わせて文字と間隔を決める。
+##
+## 部品の側では取り込む先の設計解像度を選べない。縦2142の企画に既定の16pxを
+## 出すと、画面のごく一部に読めない字が並ぶ。開くたびに測って合わせる。
+func _fit_to_screen() -> void:
+	if not is_instance_valid(_panel):
+		return
+	var height := float(get_viewport().get_visible_rect().size.y)
+	var scale := clampf(height / UI_REFERENCE_HEIGHT, 1.0, UI_MAX_SCALE)
+	var base := int(round(16.0 * scale))
+	if is_instance_valid(_headline):
+		_headline.add_theme_font_size_override("font_size", int(round(base * 1.4)))
+	for caption in _captions:
+		caption.add_theme_font_size_override("font_size", base)
+	for control in [_title_edit, _body_edit, _status_label, _send_button, _cancel_button]:
+		if is_instance_valid(control):
+			control.add_theme_font_size_override("font_size", base)
+	if is_instance_valid(_box):
+		_box.add_theme_constant_override("separation", int(round(8.0 * scale)))
+	if is_instance_valid(_body_edit):
+		_body_edit.custom_minimum_size = Vector2(0.0, base * 6.0)
+
 func _build_panel() -> void:
 	_panel = Control.new()
 	_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -167,13 +203,13 @@ func _build_panel() -> void:
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_panel.add_child(dim)
 
+	# 画面いっぱいから余白を取る。取り込む側の設計解像度は分からないので、
+	# 固定の大きさにすると、広い画面では豆粒、狭い画面でははみ出す。割合で置く。
 	var frame := PanelContainer.new()
-	frame.set_anchors_preset(Control.PRESET_CENTER)
-	frame.custom_minimum_size = Vector2(640.0, 480.0)
-	frame.offset_left = -320.0
-	frame.offset_right = 320.0
-	frame.offset_top = -240.0
-	frame.offset_bottom = 240.0
+	frame.anchor_left = PANEL_MARGIN_RATIO
+	frame.anchor_top = PANEL_MARGIN_RATIO
+	frame.anchor_right = 1.0 - PANEL_MARGIN_RATIO
+	frame.anchor_bottom = 1.0 - PANEL_MARGIN_RATIO
 	_panel.add_child(frame)
 
 	var box := VBoxContainer.new()
@@ -183,9 +219,11 @@ func _build_panel() -> void:
 	var heading := Label.new()
 	heading.text = "不具合の報告"
 	box.add_child(heading)
+	_headline = heading
 
+	# 写しと本文で余った高さを分け合う。広い画面ほど写しが大きく見える。
 	_preview = TextureRect.new()
-	_preview.custom_minimum_size = Vector2(0.0, 160.0)
+	_preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	box.add_child(_preview)
@@ -193,6 +231,7 @@ func _build_panel() -> void:
 	var title_label := Label.new()
 	title_label.text = "見出し"
 	box.add_child(title_label)
+	_captions.append(title_label)
 	_title_edit = LineEdit.new()
 	_title_edit.placeholder_text = "何が起きたかを一行で"
 	box.add_child(_title_edit)
@@ -200,8 +239,9 @@ func _build_panel() -> void:
 	var body_label := Label.new()
 	body_label.text = "詳しく（何をしたら起きたか）"
 	box.add_child(body_label)
+	_captions.append(body_label)
 	_body_edit = TextEdit.new()
-	_body_edit.custom_minimum_size = Vector2(0.0, 120.0)
+	_body_edit.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(_body_edit)
 
 	_status_label = Label.new()
@@ -215,6 +255,8 @@ func _build_panel() -> void:
 	cancel.text = "やめる"
 	cancel.pressed.connect(_close_panel)
 	buttons.add_child(cancel)
+	_cancel_button = cancel
+	_box = box
 	_send_button = Button.new()
 	_send_button.text = "送る"
 	_send_button.pressed.connect(_send_report)
@@ -408,29 +450,20 @@ func collect_context() -> Dictionary:
 			"版": _application_version(),
 			"デバッグビルド": OS.is_debug_build(),
 		},
-		"環境": {
-			"OS": OS.get_name(),
-			"OSの版": OS.get_version(),
-			"エンジン": "%s.%s.%s" % [
-				Engine.get_version_info()["major"],
-				Engine.get_version_info()["minor"],
-				Engine.get_version_info()["patch"]],
-			"描画方式": RenderingServer.get_video_adapter_name(),
-			"言語": OS.get_locale(),
-			"CPU": OS.get_processor_name(),
-		},
+		"環境": _environment_rows(),
 		"画面": {
 			"窓": str(DisplayServer.window_get_size()),
 			"描画範囲": str(viewport.get_visible_rect().size) if viewport != null else "",
 			"全画面": DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED,
 		},
-		"実行": {
+		"実行": _drop_blanks({
 			"毎秒の描画数": Engine.get_frames_per_second(),
 			"起動からの秒数": snappedf(float(Time.get_ticks_msec()) / 1000.0, 0.1),
 			"ノード数": Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
+			# ブラウザでは 0 が返る。0 と書くと「使っていない」と読めてしまう
 			"静的メモリ": Performance.get_monitor(Performance.MEMORY_STATIC),
 			"開いているシーン": _current_scene_path(),
-		},
+		}),
 	}
 	if not _breadcrumbs.is_empty():
 		context["直前の出来事"] = _breadcrumbs.duplicate()
@@ -449,6 +482,51 @@ func collect_context() -> Dictionary:
 ##
 ## 状況は畳んだ塊ではなく、見出し付きの表と箇条書きで並べる。読むのが人でも
 ## 機械でも、同じ見出しを辿れば同じ場所に同じ意味の値がある形にする。
+## 環境の欄。ブラウザでは `OS.get_version()` や `OS.get_processor_name()` が
+## 空で返るので、代わりに閲覧ソフト側から拾える範囲を入れる。
+## 空のまま並べると「調べたが分からなかった」のか「そもそも見ていない」のか
+## 読む側に区別がつかないので、埋まらない行は出さない。
+func _environment_rows() -> Dictionary:
+	var rows := {
+		"OS": OS.get_name(),
+		"OSの版": OS.get_version(),
+		"エンジン": "%s.%s.%s" % [
+			Engine.get_version_info()["major"],
+			Engine.get_version_info()["minor"],
+			Engine.get_version_info()["patch"]],
+		"描画方式": RenderingServer.get_video_adapter_name(),
+		"言語": OS.get_locale(),
+		"CPU": OS.get_processor_name(),
+	}
+	if OS.has_feature("web"):
+		rows["閲覧ソフト"] = _browser_info("navigator.userAgent")
+		if String(rows["OSの版"]).is_empty():
+			rows["OSの版"] = _browser_info("navigator.platform")
+		if String(rows["CPU"]).is_empty():
+			var cores := _browser_info("String(navigator.hardwareConcurrency || '')")
+			if not cores.is_empty():
+				rows["CPU"] = "%s コア" % cores
+	return _drop_blanks(rows)
+
+## ブラウザから1つ値を取る。ブラウザ以外や取れないときは空を返す。
+func _browser_info(expression: String) -> String:
+	if not OS.has_feature("web"):
+		return ""
+	var value: Variant = JavaScriptBridge.eval(expression, true)
+	return "" if value == null else String(value)
+
+## 空・0 の行を落とす。埋まらなかったものを並べても読む側の役に立たない。
+func _drop_blanks(rows: Dictionary) -> Dictionary:
+	var kept := {}
+	for key in rows:
+		var value: Variant = rows[key]
+		if value is String and String(value).strip_edges().is_empty():
+			continue
+		if (value is float or value is int) and float(value) == 0.0:
+			continue
+		kept[key] = value
+	return kept
+
 func build_body(description: String, context: Dictionary) -> String:
 	var lines := PackedStringArray()
 	lines.append("## 何が起きたか")
