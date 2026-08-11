@@ -24,8 +24,11 @@ var shared_secret := ""
 var enabled := true
 ## ボタンの位置。top_right / top_left / bottom_right / bottom_left。
 var button_corner := "top_right"
-var button_text := "不具合報告"
-var button_size := Vector2(120.0, 34.0)
+## ボタンへ出す文字。空なら虫の絵だけを出す。長い文字を出すと画面の隅を
+## 占めてしまうので、既定は絵だけにしてある。
+var button_text := ""
+## ボタンの大きさ。絵だけのときは正方形に近い方が収まりが良い。
+var button_size := Vector2(40.0, 40.0)
 var button_margin := Vector2(12.0, 12.0)
 var button_alpha := 0.75
 ## 描画の層。遊びの画面より大きくしておく。
@@ -46,6 +49,9 @@ func load_from_environment() -> void:
 	settings.enabled = bool(_setting("enabled", settings.enabled))
 	settings.button_corner = String(_setting("button_corner", settings.button_corner))
 	settings.button_text = String(_setting("button_text", settings.button_text))
+	settings.button_size = Vector2(
+		float(_setting("button_width", settings.button_size.x)),
+		float(_setting("button_height", settings.button_size.y)))
 	settings.button_alpha = float(_setting("button_alpha", settings.button_alpha))
 	settings.canvas_layer = int(_setting("canvas_layer", settings.canvas_layer))
 	var labels: Variant = _setting("labels", settings.labels)

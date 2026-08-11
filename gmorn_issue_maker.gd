@@ -26,6 +26,19 @@ const BREADCRUMB_LIMIT := 30
 ## 画面を送るときの縦の上限。原寸のままだと数メガバイトになり、
 ## 中継サーバー側で弾かれやすい。
 const SCREENSHOT_MAX_HEIGHT := 1080
+## ボタンに出す虫の絵。
+##
+## 文字で「不具合報告」と出すと画面の隅を大きく占める。絵文字は環境の書体に
+## 左右されて豆腐になることがあるため、絵そのものを持つ。SVGを実行時に
+## 起こすので、画像ファイルを同梱しなくてよい（submodule で配る部品なので、
+## 付属物は少ないほど扱いやすい）。
+const BUG_ICON_SVG := """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+<path d="M9 4.5 7.5 2.6M15 4.5l1.5-1.9"/>
+<rect x="8" y="6" width="8" height="13" rx="4"/>
+<path d="M8 10.5H4.6M8 15H4.6M16 10.5h3.4M16 15h3.4M6.2 7.4 4.4 6M6.2 18 4.4 19.6M17.8 7.4 19.6 6M17.8 18 19.6 19.6M12 6v13"/>
+</svg>"""
+## 虫の絵の一辺（画素）。ボタンより少し小さくして余白を残す。
+const BUG_ICON_SIZE := 22
 
 ## 設定の実体。`class_name` で引くとエディタが一度走査するまで名前が引けず、
 ## 取り込んだ直後の自動実行で落ちる。読み込みで直に指す。
@@ -104,6 +117,9 @@ func open_report_form() -> void:
 func _build_ui() -> void:
 	_button = Button.new()
 	_button.text = settings.button_text
+	if settings.button_text.is_empty():
+		_button.icon = _bug_icon()
+		_button.expand_icon = true
 	_button.tooltip_text = "この瞬間の画面と状況を添えて報告する"
 	_button.focus_mode = Control.FOCUS_NONE
 	_button.set_anchors_preset(_button_preset())
@@ -115,6 +131,14 @@ func _build_ui() -> void:
 	_button.pressed.connect(open_report_form)
 	add_child(_button)
 	_build_panel()
+
+## 虫の絵を起こす。書体に頼らないので、どの環境でも同じ形が出る。
+func _bug_icon() -> Texture2D:
+	var image := Image.new()
+	var error := image.load_svg_from_string(BUG_ICON_SVG, float(BUG_ICON_SIZE) / 24.0)
+	if error != OK:
+		return null
+	return ImageTexture.create_from_image(image)
 
 func _button_preset() -> int:
 	match settings.button_corner:
@@ -251,7 +275,7 @@ func build_payload(title: String, description: String) -> Dictionary:
 		"body": build_body(description, context),
 		"labels": settings.labels,
 		"context": context,
-		"library": {"name": "GMornIssueMaker", "version": "0.1.0"},
+		"library": {"name": "GMornIssueMaker", "version": "0.1.1"},
 	}
 	if _screenshot != null:
 		payload["screenshot_png_base64"] = Marshalls.raw_to_base64(_screenshot.save_png_to_buffer())
@@ -332,7 +356,7 @@ func build_body(description: String, context: Dictionary) -> String:
 			lines.append("- " + String(entry))
 		lines.append("")
 	lines.append("---")
-	lines.append("報告時刻: %s / GMornIssueMaker 0.1.0" % context.get("報告時刻", ""))
+	lines.append("報告時刻: %s / GMornIssueMaker 0.1.1" % context.get("報告時刻", ""))
 	return "\n".join(lines)
 
 func _format_value(value: Variant) -> String:

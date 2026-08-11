@@ -2,7 +2,7 @@
 
 遊んでいるその場から不具合を報告するためのGodotアドオン。
 
-画面の隅に小さな報告ボタンを常に出す。押すとその瞬間の画面を撮り、いま動いている状況を添えて中継サーバーへ送る。中継サーバーがGitHubのIssueを作る。
+画面の隅に小さな報告ボタン（虫の絵）を常に出す。押すとその瞬間の画面を撮り、いま動いている状況を添えて中継サーバーへ送る。中継サーバーがGitHubのIssueを作る。
 
 報告の中身は、人が読むためだけでなく**状況を機械が追えるように**組み立てる。版、環境、画面の大きさ、いま開いているシーン、直前の出来事、ゲーム固有の値を決まった見出しで並べる。
 
@@ -40,7 +40,8 @@ godot --headless --path addons/gmorn_issue_maker --script verify.gd
 | 合言葉 | `gmorn_issue_maker/shared_secret` | `GMORN_ISSUE_SECRET` | 空 |
 | 出す／出さない | `gmorn_issue_maker/enabled` | `GMORN_ISSUE_DISABLED=1` で切る | 出す |
 | ボタンの位置 | `gmorn_issue_maker/button_corner` | — | `top_right` |
-| ボタンの文字 | `gmorn_issue_maker/button_text` | — | `不具合報告` |
+| ボタンの文字 | `gmorn_issue_maker/button_text` | — | 空（虫の絵だけ） |
+| ボタンの大きさ | `gmorn_issue_maker/button_width` / `button_height` | — | `40` / `40` |
 | 描画の層 | `gmorn_issue_maker/canvas_layer` | — | `512` |
 | 札 | `gmorn_issue_maker/labels` | — | `bug, in-game-report` |
 
@@ -101,6 +102,12 @@ reporter.leave_breadcrumb("スマホでアップグレードを購入: 流量ア
 ```
 
 `html_url` を含む JSON を返すと、ゲーム側にIssueのURLが出る。
+
+## ボタンの見た目
+
+既定では虫の絵だけを出す。文字で「不具合報告」と書くと画面の隅を大きく占めるためである。絵文字は環境の書体に左右されて豆腐になることがあるので、絵そのものをSVGとして持ち、実行時に起こす。画像ファイルは同梱していない。
+
+文字を出したいときは `gmorn_issue_maker/button_text` に入れる。入れると絵の代わりにその文字が出る。
 
 ## 撮影に写り込まないこと
 
