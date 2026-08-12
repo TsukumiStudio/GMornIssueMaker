@@ -42,7 +42,7 @@ const UI_MAX_SCALE := 6.0
 
 const LIBRARY_NAME := "GMornIssueMaker"
 ## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
-const VERSION := "0.3.0"
+const VERSION := "0.3.1"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -491,16 +491,17 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 	body = _fit_to_url(body, head.length() + tail.length())
 	var url := head + body.uri_encode() + tail
 	OS.shell_open(url)
-	var saved := _save_fallback(payload)
-	var message := "GitHubの報告ページを開きました。"
-	if not report_url.is_empty():
-		message += "\n詳細へのリンクを本文へ入れてあります。"
-	if not image_url.is_empty():
-		message += "\n画面の写しは本文へ入れてあります。"
-	elif not screenshot_path.is_empty():
+	# **うまくいったときは控えを書かない。** 同じものがブラウザの中にも
+	# 置き場の md にもある。手元に貯めても誰も読まないゴミが増えるだけ。
+	# 書き出すのは「送れなかったとき」だけ（せっかく書いた内容が消えると、
+	# 二度目は書いてもらえない）。
+	# **うまくいったときは一行だけ。** 送り終えた人に要るのは「開いた」の一言で、
+	# 何を本文へ入れたかは開いた頁を見れば分かる。控えの場所も同じ。
+	# 読み手が何かしないといけないときだけ足す。
+	var message := "GitHubのIssueページを開きました"
+	if image_url.is_empty() and not screenshot_path.is_empty():
+		# 写しを上げられなかったときだけ。貼る作業が残っているので伝える。
 		message += "\n画面の写しの場所を写字板へ入れました。本文の欄へ貼ってください。"
-	if not saved.is_empty():
-		message += "\n控えは %s に残しました。" % saved
 	_sending = false
 	_send_button.disabled = false
 	_status_label.text = message
@@ -531,7 +532,10 @@ func _summary_body(image_url: String, screenshot_path: String, report_url: Strin
 func _fit_to_url(body: String, reserved: int) -> String:
 	if reserved + body.uri_encode().length() <= URL_MAX_LENGTH:
 		return body
-	var suffix := "\n\n（以下省略。全文は上のリンクか、報告の控えにあります）"
+	# 置き場へ送れたときは要約だけを載せるので、ここへは来ない。
+	# 来るのは置き場が無いときで、そのときは全文がどこにも無い。
+	# 「控えにあります」と書くと嘘になる。
+	var suffix := "\n\n（以下省略。URLの長さの上限で切れました）"
 	var room := URL_MAX_LENGTH - reserved - suffix.uri_encode().length()
 	if room <= 0:
 		return suffix
