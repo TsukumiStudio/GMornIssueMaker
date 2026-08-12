@@ -423,9 +423,15 @@ func _send_report() -> void:
 ## こちらが鍵を持たなくてよい。中継サーバーを立てるまでの間や、鍵を置きたく
 ## ない配り方でも、報告の口を閉じずに済む。
 ##
-## 画面の写しは、URLへ直接載せられない。`image_endpoint` があれば先に画像置き場へ
+## 画面の写しは、URLへ直接載せられない。`drop_endpoint` があれば先に置き場へ
 ## 上げて、本文に画像として埋め込む。無ければ従来どおり、写しの場所を伝えて
 ## 貼ってもらう。
+##
+## **本文もURLへ載せる以上、長さの上限から逃げられない。** 6000バイトしか
+## 入らず、日本語は1文字9バイトなので600文字ほどで切れる。切れるのは末尾＝
+## 直前の操作の足あとで、いちばん知りたいところが消えていた。
+## 置き場があるときは全文を Markdown で上げ、**切られない位置（先頭）** に
+## そのリンクを置く。
 func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 	var body := String(payload.get("body", ""))
 	var screenshot_path := ""
@@ -438,6 +444,12 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 		if not screenshot_path.is_empty():
 			body = "（画面の写し: %s をこの欄へ貼ってください）\n\n%s" % [screenshot_path, body]
 			DisplayServer.clipboard_set(screenshot_path)
+	# 全文はここで確定させてから上げる（画像のリンクまで入った状態）。
+	# リンクは本文の**先頭**へ置く。末尾から切るので、末尾に置くと
+	# 「長い報告ほどリンクが消える」という逆さまなことになる。
+	var report_url := await _upload_report(body)
+	if not report_url.is_empty():
+		body = "全文（切れていないもの）: %s\n\n%s" % [report_url, body]
 	var head := "https://github.com/%s/issues/new?title=%s&body=" % [
 		settings.repository, title.uri_encode()]
 	var tail := ""
@@ -449,6 +461,8 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 	OS.shell_open(url)
 	var saved := _save_fallback(payload)
 	var message := "GitHubの報告ページを開きました。"
+	if not report_url.is_empty():
+		message += "\n全文へのリンクを本文の先頭へ入れてあります。"
 	if not image_url.is_empty():
 		message += "\n画面の写しは本文へ入れてあります。"
 	elif not screenshot_path.is_empty():
@@ -468,7 +482,7 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 func _fit_to_url(body: String, reserved: int) -> String:
 	if reserved + body.uri_encode().length() <= URL_MAX_LENGTH:
 		return body
-	var suffix := "\n\n（以下省略。全文は報告の控えにあります）"
+	var suffix := "\n\n（以下省略。全文は上のリンクか、報告の控えにあります）"
 	var room := URL_MAX_LENGTH - reserved - suffix.uri_encode().length()
 	if room <= 0:
 		return suffix
@@ -491,17 +505,38 @@ func _fit_to_url(body: String, reserved: int) -> String:
 ##
 ## 上げられなくても報告は止めない。写しの場所を伝える従来の道へ落ちる。
 func _upload_screenshot() -> String:
-	if _screenshot == null or settings.image_endpoint.is_empty():
+	if _screenshot == null:
 		return ""
 	var png := _screenshot.save_png_to_buffer()
 	if png.is_empty():
+		return ""
+	return await _upload(png, "image/png")
+
+## 報告の全文を Markdown で置き場へ上げ、そのURLを返す。
+##
+## GitHubの頁を開く方式にはURLの長さの上限があり、本文は600文字ほどで切れる。
+## **切れるのは末尾＝直前の操作の足あと**で、いちばん知りたいところが消える。
+## 全文を別に置いてリンクすれば、本文が切れても読む側は辿れる。
+func _upload_report(body: String) -> String:
+	var bytes := body.to_utf8_buffer()
+	if bytes.is_empty():
+		return ""
+	return await _upload(bytes, "text/markdown")
+
+## 置き場へ上げて、公開URLを返す。上げられなければ空を返す。
+##
+## 置き場は預かるだけで、Issueを作る権限は持たない。だからURLを配布物へ
+## 入れてよい。GitHubへ直接上げる道は書き込み権限のあるトークンが要るので、
+## 配布するアプリからは使えない。
+func _upload(bytes: PackedByteArray, content_type: String) -> String:
+	if settings.drop_endpoint.is_empty():
 		return ""
 	var uploader := HTTPRequest.new()
 	uploader.timeout = REQUEST_TIMEOUT
 	add_child(uploader)
 	var error := uploader.request_raw(
-		settings.image_endpoint, PackedStringArray(["Content-Type: image/png"]),
-		HTTPClient.METHOD_POST, png)
+		settings.drop_endpoint, PackedStringArray(["Content-Type: " + content_type]),
+		HTTPClient.METHOD_POST, bytes)
 	if error != OK:
 		uploader.queue_free()
 		return ""

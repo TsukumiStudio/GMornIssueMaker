@@ -63,7 +63,16 @@ Godotのエディタで「プロジェクト設定 → プラグイン」から 
 
 書き込みはその人のGitHubの権限で行われるので、こちらが鍵を持たなくてよい。画面の写しだけは頁へ自動で入れられない（URLに画像は載せられない）ため、写しをファイルへ残し、その場所を写字板へ入れてから開く。報告する人は本文の欄へ貼るだけでよい。
 
-**画面の写しも自動で入れられる。** `gmorn_issue_maker/image_endpoint` に画像置き場のURLを入れると、送る前にそこへ上げて本文へ `![](URL)` として埋め込む。画像を預かるだけの置き場なので**鍵は要らず、URLを配布物へ入れてよい**。[MornImageServer](https://github.com/TsukumiStudio/MornImageServer) がそのまま使える。上げられなかったときは、写しの場所を伝える従来の道へ落ちるので報告は止まらない。
+**画面の写しと、報告の全文を自動で添えられる。** `gmorn_issue_maker/drop_endpoint` に置き場のURLを入れると、送る前にそこへ上げる。預かるだけの置き場なので**鍵は要らず、URLを配布物へ入れてよい**。[MornDrop](https://github.com/TsukumiStudio/MornDrop) がそのまま使える。上げられなかったときは従来の道へ落ちるので報告は止まらない。
+
+| 上げるもの | 本文への入り方 |
+| --- | --- |
+| 画面の写し（png） | `![](URL)` として先頭へ埋め込む |
+| 報告の全文（Markdown） | 「全文（切れていないもの）: URL」を**先頭の行**に置く |
+
+**全文を別に置くのは、この方式のURLに長さの上限があるため。** 6000バイトしか入らず、日本語は1文字9バイトなので**本文は600文字ほどで切れる**。切れるのは末尾＝直前の操作の足あとで、いちばん知りたいところが消えていた。リンクを先頭に置くのは、末尾から切るため。末尾に置くと「長い報告ほどリンクが消える」という逆さまなことになる。
+
+古い名前 `image_endpoint` でも読む。
 
 GitHubのアカウントを持たない人からは報告できない。広く配るものなら次のBを使う。
 
@@ -117,7 +126,7 @@ KV を結ばなければ回数制限は素通しになる（報告の口を塞�
 | --- | --- | --- | --- |
 | 送信先（中継サーバー） | `gmorn_issue_maker/endpoint` | `GMORN_ISSUE_ENDPOINT` | 空 |
 | 報告先リポジトリ | `gmorn_issue_maker/repository` | `GMORN_ISSUE_REPOSITORY` | 空 |
-| 画像置き場 | `gmorn_issue_maker/image_endpoint` | `GMORN_ISSUE_IMAGE_ENDPOINT` | 空 |
+| 置き場（写しと全文） | `gmorn_issue_maker/drop_endpoint` | — | 空 |
 | 合言葉 | `gmorn_issue_maker/shared_secret` | `GMORN_ISSUE_SECRET` | 空 |
 | 出す／出さない | `gmorn_issue_maker/enabled` | `GMORN_ISSUE_DISABLED=1` で切る | 出す |
 | ボタンの位置 | `gmorn_issue_maker/button_corner` | — | `top_right` |

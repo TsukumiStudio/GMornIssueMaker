@@ -17,12 +17,20 @@ extends RefCounted
 
 ## 送り先。中継サーバーのURL。空でも `repository` があれば報告できる。
 var endpoint := ""
-## 画像置き場のURL（MornImageServer など）。
+## 置き場のURL（[MornDrop](https://github.com/TsukumiStudio/MornDrop) など）。
 ##
-## 入れておくと、GitHubの頁を開く方式でも画面の写しを先に上げて、本文へ
-## 画像として埋め込める。**画像を置くだけなので鍵は要らない**（Issueを作る
-## 権限は持たせない）。中継サーバーを立てずに、写しつきの報告が作れる。
-var image_endpoint := ""
+## 入れておくと、GitHubの頁を開く方式でも
+##
+## - 画面の写しを先に上げて、本文へ画像として埋め込める
+## - **報告の全文を Markdown で上げて、本文からリンクできる**
+##
+## 全文のリンクが要るのは、GitHubの頁を開く方式にURLの長さの上限があるため。
+## 6000バイトしか載らず、日本語は1文字9バイトなので**本文は600文字ほどで切れる**。
+## 直前の操作の足あとが途中で消えて、いちばん知りたいところが読めなかった。
+##
+## **置くだけなので鍵は要らない**（Issueを作る権限は持たせない）。
+## 古い名前 `image_endpoint` でも読む。
+var drop_endpoint := ""
 ## 報告先のリポジトリ（`owner/name`）。中継サーバーが無いときに使う。
 ##
 ## 中継サーバーが無くても、GitHubの「新しいIssue」の頁を見出しと本文を入れた
@@ -58,7 +66,10 @@ const SETTING_PREFIX := "gmorn_issue_maker/"
 func load_from_environment() -> void:
 	var settings := self
 	settings.endpoint = String(_setting("endpoint", settings.endpoint))
-	settings.image_endpoint = String(_setting("image_endpoint", settings.image_endpoint))
+	# 置き場は画像だけでなく報告の全文も預かるようになったので名前を変えた。
+	# 先に入れた人の設定を壊さないよう、古い名前も読む。
+	settings.drop_endpoint = String(_setting("image_endpoint", settings.drop_endpoint))
+	settings.drop_endpoint = String(_setting("drop_endpoint", settings.drop_endpoint))
 	settings.repository = String(_setting("repository", settings.repository))
 	settings.shared_secret = String(_setting("shared_secret", settings.shared_secret))
 	settings.enabled = bool(_setting("enabled", settings.enabled))
