@@ -39,6 +39,10 @@ const PANEL_MARGIN_RATIO := 0.06
 ## 縦2142のような設計だと、既定の16pxは実質読めない。
 const UI_REFERENCE_HEIGHT := 720.0
 const UI_MAX_SCALE := 6.0
+
+const LIBRARY_NAME := "GMornIssueMaker"
+const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
+const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
 ##
 ## 文字で「不具合報告」と出すと画面の隅を大きく占める。絵文字は環境の書体に
@@ -77,6 +81,10 @@ var _headline: Label
 var _captions: Array[Label] = []
 var _cancel_button: Button
 var _box: VBoxContainer
+var _inset: MarginContainer
+var _footer: HBoxContainer
+var _signature: Label
+var _version_cache := ""
 
 func _ready() -> void:
 	settings = SETTINGS_SCRIPT.new()
@@ -186,8 +194,18 @@ func _fit_to_screen() -> void:
 	for control in [_title_edit, _body_edit, _status_label, _send_button, _cancel_button]:
 		if is_instance_valid(control):
 			control.add_theme_font_size_override("font_size", base)
+	if is_instance_valid(_signature):
+		# 部品の名前と版は控えめに。読ませたいのは報告の中身のほう。
+		_signature.add_theme_font_size_override("font_size", int(round(base * 0.8)))
 	if is_instance_valid(_box):
-		_box.add_theme_constant_override("separation", int(round(8.0 * scale)))
+		_box.add_theme_constant_override("separation", int(round(10.0 * scale)))
+	if is_instance_valid(_footer):
+		_footer.add_theme_constant_override("separation", int(round(12.0 * scale)))
+	if is_instance_valid(_inset):
+		# 窓の縁と中身のあいだ。狭いと文字が枠に貼り付いて読みにくい。
+		var pad := int(round(22.0 * scale))
+		for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+			_inset.add_theme_constant_override(side, pad)
 	if is_instance_valid(_body_edit):
 		_body_edit.custom_minimum_size = Vector2(0.0, base * 6.0)
 
@@ -199,7 +217,7 @@ func _build_panel() -> void:
 	add_child(_panel)
 
 	var dim := ColorRect.new()
-	dim.color = Color(0.0, 0.0, 0.0, 0.55)
+	dim.color = Color(0.0, 0.0, 0.0, 0.6)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_panel.add_child(dim)
 
@@ -210,57 +228,141 @@ func _build_panel() -> void:
 	frame.anchor_top = PANEL_MARGIN_RATIO
 	frame.anchor_right = 1.0 - PANEL_MARGIN_RATIO
 	frame.anchor_bottom = 1.0 - PANEL_MARGIN_RATIO
+	frame.add_theme_stylebox_override("panel", _panel_style())
 	_panel.add_child(frame)
 
+	# 窓の縁と中身のあいだ。文字と同じ比で広げるので _fit_to_screen が触る。
+	_inset = MarginContainer.new()
+	frame.add_child(_inset)
+
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
-	frame.add_child(box)
+	_inset.add_child(box)
+	_box = box
 
-	var heading := Label.new()
-	heading.text = "不具合の報告"
-	box.add_child(heading)
-	_headline = heading
+	_headline = Label.new()
+	_headline.text = "不具合報告"
+	_headline.add_theme_color_override("font_color", ACCENT_COLOR)
+	box.add_child(_headline)
 
-	# 写しと本文で余った高さを分け合う。広い画面ほど写しが大きく見える。
+	# 写しは暗い台紙に載せる。透過や白い絵でも輪郭が分かるようにするため。
+	var stage := PanelContainer.new()
+	stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stage.add_theme_stylebox_override("panel", _stage_style())
+	box.add_child(stage)
 	_preview = TextureRect.new()
-	_preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	box.add_child(_preview)
+	stage.add_child(_preview)
 
-	var title_label := Label.new()
-	title_label.text = "見出し"
-	box.add_child(title_label)
-	_captions.append(title_label)
+	_captions.append(_caption("タイトル", box))
 	_title_edit = LineEdit.new()
 	_title_edit.placeholder_text = "何が起きたかを一行で"
+	_dress_input(_title_edit)
 	box.add_child(_title_edit)
 
-	var body_label := Label.new()
-	body_label.text = "詳しく（何をしたら起きたか）"
-	box.add_child(body_label)
-	_captions.append(body_label)
+	_captions.append(_caption("詳細", box))
 	_body_edit = TextEdit.new()
+	_body_edit.placeholder_text = "何をしたら起きたか"
 	_body_edit.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_dress_input(_body_edit)
 	box.add_child(_body_edit)
 
 	_status_label = Label.new()
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_status_label.add_theme_color_override("font_color", ACCENT_COLOR)
 	box.add_child(_status_label)
 
-	var buttons := HBoxContainer.new()
-	buttons.alignment = BoxContainer.ALIGNMENT_END
-	box.add_child(buttons)
-	var cancel := Button.new()
-	cancel.text = "やめる"
-	cancel.pressed.connect(_close_panel)
-	buttons.add_child(cancel)
-	_cancel_button = cancel
-	_box = box
+	# いちばん下の段。左に部品の名前と版、右に釦。
+	# 版が分かると、報告を受けた側が「どの版の部品か」を聞き返さずに済む。
+	var footer := HBoxContainer.new()
+	box.add_child(footer)
+	_signature = Label.new()
+	_signature.text = "%s v%s" % [LIBRARY_NAME, _library_version()]
+	_signature.add_theme_color_override("font_color", MUTED_COLOR)
+	_signature.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	footer.add_child(_signature)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	footer.add_child(spacer)
+	_cancel_button = Button.new()
+	_cancel_button.text = "閉じる"
+	_cancel_button.pressed.connect(_close_panel)
+	_dress_button(_cancel_button, false)
+	footer.add_child(_cancel_button)
 	_send_button = Button.new()
-	_send_button.text = "送る"
+	_send_button.text = "送信する"
 	_send_button.pressed.connect(_send_report)
-	buttons.add_child(_send_button)
+	_dress_button(_send_button, true)
+	footer.add_child(_send_button)
+	_footer = footer
+
+## 見出しの小さいラベル
+func _caption(text: String, parent: Node) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_color_override("font_color", MUTED_COLOR)
+	parent.add_child(label)
+	return label
+
+## 部品の版。`plugin.cfg` を正とする。スクリプトにも書くと2か所になり、
+## 片方だけ上げる事故が起きる。読めなければ空を返す。
+func _library_version() -> String:
+	if _version_cache != "":
+		return _version_cache
+	var config := ConfigFile.new()
+	var path: String = get_script().resource_path.get_base_dir().path_join("plugin.cfg")
+	if config.load(path) == OK:
+		_version_cache = String(config.get_value("plugin", "version", ""))
+	return _version_cache
+
+## 書き込む欄。背景を1段明るくして「ここに書く」と分かるようにする。
+func _dress_input(control: Control) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.17, 0.17, 0.2)
+	normal.set_corner_radius_all(8)
+	normal.set_content_margin_all(10)
+	var focused := normal.duplicate() as StyleBoxFlat
+	focused.border_color = ACCENT_COLOR
+	focused.set_border_width_all(2)
+	control.add_theme_stylebox_override("normal", normal)
+	control.add_theme_stylebox_override("focus", focused)
+
+## 釦。送信だけを目立たせ、閉じるは控えめにする。
+func _dress_button(button: Button, primary: bool) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = ACCENT_COLOR if primary else Color(0.24, 0.24, 0.28)
+	normal.set_corner_radius_all(8)
+	normal.set_content_margin_all(10)
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = normal.bg_color.lightened(0.12)
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = normal.bg_color.darkened(0.15)
+	var disabled := normal.duplicate() as StyleBoxFlat
+	disabled.bg_color = normal.bg_color
+	disabled.bg_color.a = 0.4
+	for name in ["normal", "hover", "pressed", "disabled"]:
+		button.add_theme_stylebox_override(name, {
+			"normal": normal, "hover": hover,
+			"pressed": pressed, "disabled": disabled}[name])
+	var text_color := Color(0.12, 0.1, 0.06) if primary else Color(0.92, 0.92, 0.95)
+	for name in ["font_color", "font_hover_color", "font_pressed_color"]:
+		button.add_theme_color_override(name, text_color)
+
+func _panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.11, 0.11, 0.13, 0.98)
+	style.border_color = Color(0.32, 0.32, 0.38)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(14)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.5)
+	style.shadow_size = 10
+	return style
+
+func _stage_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.06, 0.06, 0.08, 1.0)
+	style.set_corner_radius_all(8)
+	return style
 
 func _close_panel() -> void:
 	_panel.visible = false
@@ -434,7 +536,7 @@ func build_payload(title: String, description: String) -> Dictionary:
 		"body": build_body(description, context),
 		"labels": settings.labels,
 		"context": context,
-		"library": {"name": "GMornIssueMaker", "version": "0.2.1"},
+		"library": {"name": LIBRARY_NAME, "version": _library_version()},
 	}
 	if _screenshot != null:
 		payload["screenshot_png_base64"] = Marshalls.raw_to_base64(_screenshot.save_png_to_buffer())
