@@ -41,6 +41,8 @@ const UI_REFERENCE_HEIGHT := 720.0
 const UI_MAX_SCALE := 6.0
 
 const LIBRARY_NAME := "GMornIssueMaker"
+## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
+const VERSION := "0.2.2"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -84,7 +86,6 @@ var _box: VBoxContainer
 var _inset: MarginContainer
 var _footer: HBoxContainer
 var _signature: Label
-var _version_cache := ""
 
 func _ready() -> void:
 	settings = SETTINGS_SCRIPT.new()
@@ -304,16 +305,15 @@ func _caption(text: String, parent: Node) -> Label:
 	parent.add_child(label)
 	return label
 
-## 部品の版。`plugin.cfg` を正とする。スクリプトにも書くと2か所になり、
-## 片方だけ上げる事故が起きる。読めなければ空を返す。
+## 部品の版。**実行時は必ずこの定数から出す。**
+##
+## `plugin.cfg` から読む形にしたら、書き出した実行ファイルで空になった。
+## あれはエディタ用のメタ情報で、書き出しには含まれない。取り込む側に
+## 書き出し設定をいじらせるのは筋が悪いので、ここに持つ。
+##
+## `plugin.cfg` と食い違わないことは `verify.gd` が確かめる。
 func _library_version() -> String:
-	if _version_cache != "":
-		return _version_cache
-	var config := ConfigFile.new()
-	var path: String = get_script().resource_path.get_base_dir().path_join("plugin.cfg")
-	if config.load(path) == OK:
-		_version_cache = String(config.get_value("plugin", "version", ""))
-	return _version_cache
+	return VERSION
 
 ## 書き込む欄。背景を1段明るくして「ここに書く」と分かるようにする。
 func _dress_input(control: Control) -> void:

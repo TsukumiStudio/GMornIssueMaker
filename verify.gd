@@ -17,7 +17,22 @@ func _run() -> void:
 	assert(settings.button_corner == "top_right", "既定の位置が違う")
 	assert(settings.endpoint.is_empty(), "例では送り先を空にしてある")
 
-	var reporter: Node = (load("res://gmorn_issue_maker.gd") as GDScript).new()
+	# 版は2か所にある。実行時に使うのはスクリプトの定数で、plugin.cfg は
+	# エディタが読む。書き出しに plugin.cfg は含まれないので、実行時に
+	# そちらへ頼ると空になる（実際に画面へ「v」だけが出た）。
+	# 片方だけ上げる事故を防ぐため、ここで突き合わせる。
+	var maker_script: GDScript = load("res://gmorn_issue_maker.gd")
+	var declared: String = maker_script.get_script_constant_map()["VERSION"]
+	var plugin := ConfigFile.new()
+	assert(plugin.load("res://plugin.cfg") == OK, "plugin.cfg が読めない")
+	var advertised := String(plugin.get_value("plugin", "version", ""))
+	assert(declared == advertised,
+		"版が食い違っています。スクリプト=%s / plugin.cfg=%s。両方を揃えること" % [
+			declared, advertised])
+	assert(not declared.is_empty(), "版が空です")
+	print("  版: %s（スクリプトと plugin.cfg が一致）" % declared)
+
+	var reporter: Node = maker_script.new()
 	root.add_child(reporter)
 	await process_frame
 
