@@ -32,6 +32,31 @@ func _run() -> void:
 	assert(not declared.is_empty(), "版が空です")
 	print("  版: %s（スクリプトと plugin.cfg が一致）" % declared)
 
+	# 置き場は既定でつながっていること。**空だと、取り込んだ人は写しも全文も
+	# 付かないまま気づかない。** 設定を書かせない代わりに、ここで見張る。
+	var fresh: RefCounted = settings_script.new()
+	fresh.load_from_environment()
+	assert(fresh.drop_endpoint.begins_with("https://"),
+		"置き場が既定でつながっていない（%s）" % fresh.drop_endpoint)
+	assert(fresh.drop_endpoint == settings_script.DEFAULT_DROP_ENDPOINT,
+		"既定値と食い違う（%s）" % fresh.drop_endpoint)
+
+	# 差し替えられること。
+	ProjectSettings.set_setting("gmorn_issue_maker/drop_endpoint", "https://example.test")
+	var swapped: RefCounted = settings_script.new()
+	swapped.load_from_environment()
+	assert(swapped.drop_endpoint == "https://example.test",
+		"置き場を差し替えられない（%s）" % swapped.drop_endpoint)
+
+	# 空を書いたら切れること。既定へ戻ってはいけない。
+	ProjectSettings.set_setting("gmorn_issue_maker/drop_endpoint", "")
+	var cut: RefCounted = settings_script.new()
+	cut.load_from_environment()
+	assert(cut.drop_endpoint.is_empty(),
+		"空にしても切れない（%s）" % cut.drop_endpoint)
+	ProjectSettings.clear("gmorn_issue_maker/drop_endpoint")
+	print("  置き場: 既定=%s / 差し替え・切断とも効く" % settings_script.DEFAULT_DROP_ENDPOINT)
+
 	var reporter: Node = maker_script.new()
 	root.add_child(reporter)
 	await process_frame

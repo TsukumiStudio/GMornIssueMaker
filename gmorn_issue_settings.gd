@@ -15,9 +15,19 @@ extends RefCounted
 ## 置く。合言葉のように配りたくないものは環境変数で渡す。どちらにも書けるが、
 ## 配布物に入れた鍵は取り出せることを前提に決める。
 
+## 既定でつないである置き場。
+##
+## **公開して構わない。** 預かるだけでIssueを作る権限は持たないので、鍵ではない。
+## そもそもブラウザで動くものに入れた時点で、開発者ツールから見える。
+## 隠せない前提で、守りは置き場の側（大きさの上限・回数の制限・受け取る種類の
+## 限定・一定期間で消える）に寄せてある。
+##
+## 差し替え・切断のしかたは `drop_endpoint` の説明を見ること。
+const DEFAULT_DROP_ENDPOINT := "https://drop.tsukumistudio.com"
+
 ## 送り先。中継サーバーのURL。空でも `repository` があれば報告できる。
 var endpoint := ""
-## 置き場のURL（[MornDrop](https://github.com/TsukumiStudio/MornDrop) など）。
+## 置き場のURL。写しと報告の全文を預けるだけの、小さなサーバー。
 ##
 ## 入れておくと、GitHubの頁を開く方式でも
 ##
@@ -28,9 +38,18 @@ var endpoint := ""
 ## 6000バイトしか載らず、日本語は1文字9バイトなので**本文は600文字ほどで切れる**。
 ## 直前の操作の足あとが途中で消えて、いちばん知りたいところが読めなかった。
 ##
-## **置くだけなので鍵は要らない**（Issueを作る権限は持たせない）。
+## **置くだけなので鍵は要らない**（Issueを作る権限は持たせない）。だから
+## **既定でつなげてある。** 取り込んだだけで写しも全文も付く。
+##
+## 別の置き場に向けたいなら `gmorn_issue_maker/drop_endpoint`、
+## 環境変数 `GMORN_ISSUE_DROP_ENDPOINT` で差し替える。空にすれば使わない。
 ## 古い名前 `image_endpoint` でも読む。
-var drop_endpoint := ""
+##
+## 置き場に求めるのはこれだけ。
+##
+##   POST で生バイトを受け取り（種類は Content-Type）、
+##   `{"url": "..."}` を含むJSONを返す
+var drop_endpoint := DEFAULT_DROP_ENDPOINT
 ## 報告先のリポジトリ（`owner/name`）。中継サーバーが無いときに使う。
 ##
 ## 中継サーバーが無くても、GitHubの「新しいIssue」の頁を見出しと本文を入れた
@@ -68,8 +87,13 @@ func load_from_environment() -> void:
 	settings.endpoint = String(_setting("endpoint", settings.endpoint))
 	# 置き場は画像だけでなく報告の全文も預かるようになったので名前を変えた。
 	# 先に入れた人の設定を壊さないよう、古い名前も読む。
+	#
+	# **空を書いたら空のまま**にする（既定へ戻さない）。置き場へ送りたくない
+	# 取り込み方があるので、明示的に切れる道を残す。
 	settings.drop_endpoint = String(_setting("image_endpoint", settings.drop_endpoint))
 	settings.drop_endpoint = String(_setting("drop_endpoint", settings.drop_endpoint))
+	settings.drop_endpoint = _environment(
+		"GMORN_ISSUE_DROP_ENDPOINT", settings.drop_endpoint)
 	settings.repository = String(_setting("repository", settings.repository))
 	settings.shared_secret = String(_setting("shared_secret", settings.shared_secret))
 	settings.enabled = bool(_setting("enabled", settings.enabled))
