@@ -76,6 +76,15 @@ var canvas_layer := 512
 ## Issue へ付ける札。
 var labels: Array = ["bug", "in-game-report"]
 
+## 報告の画面で使う書体（`res://` から始まる置き場）。空なら既定のまま。
+##
+## 指定しないと、Godotが用意している既定の書体で描く。この書体は日本語の字を
+## 持たないが、卓上では実行環境の書体が肩代わりするため気付けない。肩代わりの
+## 無い環境（Webへ書き出したもの）では、日本語がすべて豆腐になる。実際に配った
+## Web版で、報告の画面の文字が全部四角になっていた。報告の画面が読めなければ、
+## そもそも報告が届かない。
+var font_path := ""
+
 const SETTING_PREFIX := "gmorn_issue_maker/"
 
 ## 設定を読み込む。自分自身へ書き込むので、作ってから呼ぶ。
@@ -104,6 +113,11 @@ func load_from_environment() -> void:
 		float(_setting("button_height", settings.button_size.y)))
 	settings.button_alpha = float(_setting("button_alpha", settings.button_alpha))
 	settings.canvas_layer = int(_setting("canvas_layer", settings.canvas_layer))
+	settings.font_path = String(_setting("font_path", settings.font_path))
+	# 何も指定が無ければ、プロジェクト全体の書体を借りる。作品が既に持って
+	# いるものを使えば、報告の画面のためだけに置き場を書かせなくて済む。
+	if settings.font_path.is_empty():
+		settings.font_path = String(_setting_at("gui/theme/custom_font", ""))
 	var labels: Variant = _setting("labels", settings.labels)
 	if labels is Array:
 		settings.labels = labels as Array
@@ -118,7 +132,9 @@ func load_from_environment() -> void:
 		settings.enabled = false
 
 static func _setting(key: String, fallback: Variant) -> Variant:
-	var path := SETTING_PREFIX + key
+	return _setting_at(SETTING_PREFIX + key, fallback)
+
+static func _setting_at(path: String, fallback: Variant) -> Variant:
 	if not ProjectSettings.has_setting(path):
 		return fallback
 	return ProjectSettings.get_setting(path, fallback)

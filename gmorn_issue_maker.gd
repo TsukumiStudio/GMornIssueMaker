@@ -69,6 +69,7 @@ signal report_finished(success: bool, url: String, message: String)
 var settings: RefCounted
 var _button: Button
 var _panel: Control
+var _theme: Theme
 var _title_edit: LineEdit
 var _body_edit: TextEdit
 var _status_label: Label
@@ -148,6 +149,7 @@ func _build_ui() -> void:
 		_button.icon = _bug_icon()
 		_button.expand_icon = true
 	_button.tooltip_text = "この瞬間の画面と状況を添えて報告する"
+	_button.theme = _ui_theme()
 	_button.focus_mode = Control.FOCUS_NONE
 	_button.set_anchors_preset(_button_preset())
 	_button.offset_left = settings.button_margin.x if settings.button_corner in ["top_left", "bottom_left"] else -settings.button_size.x - settings.button_margin.x
@@ -210,11 +212,37 @@ func _fit_to_screen() -> void:
 	if is_instance_valid(_body_edit):
 		_body_edit.custom_minimum_size = Vector2(0.0, base * 6.0)
 
+## 報告の画面で使うテーマを作る。書体の指定が無ければ `null` を返し、既定の
+## ままにする。
+##
+## 既定の書体は日本語の字を持たない。卓上では実行環境の書体が肩代わりするため
+## 気付けないが、肩代わりの無い環境（Webへ書き出したもの）では日本語がすべて
+## 豆腐になる。実際に配ったWeb版で、報告の画面の文字が全部四角になっていた。
+## 報告の画面が読めなければ、そもそも報告が届かない。
+##
+## 大きさはここでは決めない。画面の広さに合わせて場所ごとに指定してあるため
+## （`_apply_scale()`）、ここで既定を入れるとそちらと二重になる。
+func _ui_theme() -> Theme:
+	if _theme != null:
+		return _theme
+	if settings.font_path.is_empty():
+		return null
+	var font := load(settings.font_path) as Font
+	if font == null:
+		push_warning("書体を読めなかったため既定のままにする: %s" % settings.font_path)
+		return null
+	_theme = Theme.new()
+	_theme.default_font = font
+	return _theme
+
 func _build_panel() -> void:
 	_panel = Control.new()
 	_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_panel.visible = false
 	_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	# 書体は報告の画面そのものへ付ける。テーマは子へ伝わるので、部品を足す
+	# たびに指定し直さなくてよい。
+	_panel.theme = _ui_theme()
 	add_child(_panel)
 
 	var dim := ColorRect.new()

@@ -17,6 +17,10 @@ trap 'rm -rf "$work_dir"' EXIT
 mkdir -p "$work_dir/addons/gmorn_issue_maker"
 cp "$addon_dir"/*.gd "$addon_dir"/plugin.cfg "$work_dir/addons/gmorn_issue_maker/"
 cp "$addon_dir/verify.gd" "$work_dir/verify.gd"
+# plugin.cfg は根にも置く。確認は版を突き合わせるために `res://plugin.cfg` を
+# 読むが、下の sed が書き換えるのは `res://gmorn_` で始まる置き場だけなので、
+# 根に無いと読めずにそこで止まる。
+cp "$addon_dir/plugin.cfg" "$work_dir/plugin.cfg"
 # 部品の中の相対参照に合わせるため、確認用の読み込み先も addons/ を指す。
 sed -i '' 's|res://gmorn_|res://addons/gmorn_issue_maker/gmorn_|g' "$work_dir/verify.gd" 2>/dev/null \
   || sed -i 's|res://gmorn_|res://addons/gmorn_issue_maker/gmorn_|g' "$work_dir/verify.gd"
