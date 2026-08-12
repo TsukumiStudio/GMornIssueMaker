@@ -57,6 +57,37 @@ func _run() -> void:
 	ProjectSettings.clear("gmorn_issue_maker/drop_endpoint")
 	print("  置き場: 既定=%s / 差し替え・切断とも効く" % settings_script.DEFAULT_DROP_ENDPOINT)
 
+	# 置き場へ送れたときの本文は「写し・詳細へのリンク・部品の版」だけ。
+	# 表を並べるとURLの上限で切れるので、Issueには載せない。
+	var brief: Node = maker_script.new()
+	root.add_child(brief)
+	await process_frame
+	var summary: String = brief.call(
+		"_summary_body", "https://example.test/a.png", "", "https://example.test/b.md")
+	assert(summary.contains("https://example.test/a.png"), "写しが入っていない")
+	assert(summary.contains("詳細はこちら: https://example.test/b.md"),
+		"詳細へのリンクが入っていない: %s" % summary)
+	assert(summary.contains("v" + maker_script.get_script_constant_map()["VERSION"]),
+		"部品の版が入っていない: %s" % summary)
+	assert(not summary.contains("## 環境"), "表がIssue本文に残っている")
+	# URLの上限に対して十分小さいこと。ここが膨らむと、また切れ始める。
+	assert(summary.uri_encode().length() < 1000,
+		"Issue本文が%dバイトある。要約になっていない" % summary.uri_encode().length())
+	print("  Issue本文: %dバイト（上限6000）" % summary.uri_encode().length())
+
+	# **本番の経路が本当にこれを使っているか。** 関数だけを見ていると、
+	# 呼び出し側を書き換えて表を並べる形に戻しても素通りする（実際に素通りした）。
+	# 送る流れの中で `_summary_body` を通っていることを、書いてあるもので確かめる。
+	var source := FileAccess.get_file_as_string("res://gmorn_issue_maker.gd")
+	var flow := source.substr(source.find("func _open_github_issue_page"))
+	flow = flow.substr(0, flow.find("\nfunc "))
+	assert(flow.contains("_summary_body("),
+		"送る流れが _summary_body を通っていない。置き場へ送れたときは要約だけを載せること")
+	assert(flow.contains("_upload_report("),
+		"送る流れが _upload_report を通っていない。詳細を置き場へ送ること")
+	brief.queue_free()
+	await process_frame
+
 	var reporter: Node = maker_script.new()
 	root.add_child(reporter)
 	await process_frame

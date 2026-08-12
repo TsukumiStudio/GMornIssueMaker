@@ -42,7 +42,7 @@ const UI_MAX_SCALE := 6.0
 
 const LIBRARY_NAME := "GMornIssueMaker"
 ## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
-const VERSION := "0.2.2"
+const VERSION := "0.3.0"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -472,12 +472,16 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 		if not screenshot_path.is_empty():
 			body = "（画面の写し: %s をこの欄へ貼ってください）\n\n%s" % [screenshot_path, body]
 			DisplayServer.clipboard_set(screenshot_path)
-	# 全文はここで確定させてから上げる（画像のリンクまで入った状態）。
-	# リンクは本文の**先頭**へ置く。末尾から切るので、末尾に置くと
-	# 「長い報告ほどリンクが消える」という逆さまなことになる。
+	# 詳しい表は置き場の md へ送り、**Issueには写しとリンクだけを載せる**。
+	#
+	# 状況の表をURLに詰め込むと6000バイトを超えて切れる。切れるのは末尾＝
+	# 直前の操作の足あとで、いちばん知りたいところだった。どうせ md を開くなら、
+	# Issue に同じものを（しかも切れた形で）並べる意味が無い。
+	#
+	# 上げられなかったときだけ、従来どおり全文を詰めて切る。
 	var report_url := await _upload_report(body)
 	if not report_url.is_empty():
-		body = "全文（切れていないもの）: %s\n\n%s" % [report_url, body]
+		body = _summary_body(image_url, screenshot_path, report_url)
 	var head := "https://github.com/%s/issues/new?title=%s&body=" % [
 		settings.repository, title.uri_encode()]
 	var tail := ""
@@ -490,7 +494,7 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 	var saved := _save_fallback(payload)
 	var message := "GitHubの報告ページを開きました。"
 	if not report_url.is_empty():
-		message += "\n全文へのリンクを本文の先頭へ入れてあります。"
+		message += "\n詳細へのリンクを本文へ入れてあります。"
 	if not image_url.is_empty():
 		message += "\n画面の写しは本文へ入れてあります。"
 	elif not screenshot_path.is_empty():
@@ -501,6 +505,23 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 	_send_button.disabled = false
 	_status_label.text = message
 	report_finished.emit(true, url, message)
+
+## 置き場へ送れたときのIssue本文。写し・詳細へのリンク・部品の版だけ。
+##
+## 読む側がまず見るのは絵で、次に開くのは詳細。Issueに表を並べても、
+## URLの上限で切れた不完全な写しになるだけなので載せない。
+func _summary_body(image_url: String, screenshot_path: String, report_url: String) -> String:
+	var lines := PackedStringArray()
+	if not image_url.is_empty():
+		lines.append("![報告時の画面](%s)" % image_url)
+	elif not screenshot_path.is_empty():
+		lines.append("（画面の写し: %s をこの欄へ貼ってください）" % screenshot_path)
+	lines.append("")
+	lines.append("詳細はこちら: %s" % report_url)
+	lines.append("")
+	lines.append("---")
+	lines.append("%s v%s" % [LIBRARY_NAME, _library_version()])
+	return "\n".join(lines)
 
 ## URLの長さに収まるところまで本文を切る。全文は控えに残るので情報は失われない。
 ##
@@ -716,7 +737,8 @@ func build_body(description: String, context: Dictionary) -> String:
 			lines.append("- " + String(entry))
 		lines.append("")
 	lines.append("---")
-	lines.append("報告時刻: %s / GMornIssueMaker 0.2.1" % context.get("報告時刻", ""))
+	lines.append("報告時刻: %s / %s v%s" % [
+		context.get("報告時刻", ""), LIBRARY_NAME, _library_version()])
 	return "\n".join(lines)
 
 func _format_value(value: Variant) -> String:
