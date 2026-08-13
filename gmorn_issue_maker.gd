@@ -38,11 +38,18 @@ const PANEL_MARGIN_RATIO := 0.06
 ## 既定の文字の大きさが読める画面の高さ。これより広い画面では、その比で拡大する。
 ## 縦2142のような設計だと、既定の16pxは実質読めない。
 const UI_REFERENCE_HEIGHT := 720.0
+## 同じことを幅でも見る。**高さだけを見ていたので、縦長の携帯では拡大されて
+## 幅がさらに足りなくなっていた** — 詰まっているのは幅なのに、である。
+## 390x844 では 1.17 倍・19px になり、要る幅 392px に対して取り分は 343px。
+## [送信する] が「送信す」までしか出ず、**報告しようとした人が送れなかった**。
+const UI_REFERENCE_WIDTH := 540.0
 const UI_MAX_SCALE := 6.0
+## 狭い画面では既定より縮める。下限を 1.0 で止めると、上の取り違えが残る。
+const UI_MIN_SCALE := 0.85
 
 const LIBRARY_NAME := "GMornIssueMaker"
 ## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
-const VERSION := "0.3.1"
+const VERSION := "0.3.2"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -187,8 +194,11 @@ func _button_preset() -> int:
 func _fit_to_screen() -> void:
 	if not is_instance_valid(_panel):
 		return
-	var height := float(get_viewport().get_visible_rect().size.y)
-	var scale := clampf(height / UI_REFERENCE_HEIGHT, 1.0, UI_MAX_SCALE)
+	var view := get_viewport().get_visible_rect().size
+	# **狭い方に合わせる。** 広い方に合わせると、もう一方からはみ出す。
+	var scale := clampf(minf(
+		float(view.x) / UI_REFERENCE_WIDTH,
+		float(view.y) / UI_REFERENCE_HEIGHT), UI_MIN_SCALE, UI_MAX_SCALE)
 	var base := int(round(16.0 * scale))
 	if is_instance_valid(_headline):
 		_headline.add_theme_font_size_override("font_size", int(round(base * 1.4)))
