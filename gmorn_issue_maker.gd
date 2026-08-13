@@ -49,7 +49,7 @@ const UI_MIN_SCALE := 0.85
 
 const LIBRARY_NAME := "GMornIssueMaker"
 ## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
-const VERSION := "0.3.2"
+const VERSION := "0.3.3"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -93,6 +93,7 @@ var _cancel_button: Button
 var _box: VBoxContainer
 var _inset: MarginContainer
 var _footer: HBoxContainer
+var _destination: Label
 var _signature: Label
 
 func _ready() -> void:
@@ -310,6 +311,16 @@ func _build_panel() -> void:
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status_label.add_theme_color_override("font_color", ACCENT_COLOR)
 	box.add_child(_status_label)
+
+	# **どこへ行くのかを、押す前に言う。**
+	# 画面の写しと本文は、置き場 (drop_endpoint) がある場合そこへ上がる。
+	# 送る人にそれが伝わっていなかった — 押してから気づくものではない。
+	_destination = Label.new()
+	_destination.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_destination.add_theme_color_override("font_color", MUTED_COLOR)
+	_destination.text = _destination_note()
+	_captions.append(_destination)
+	box.add_child(_destination)
 
 	# いちばん下の段。左に部品の名前と版、右に釦。
 	# 版が分かると、報告を受けた側が「どの版の部品か」を聞き返さずに済む。
@@ -585,6 +596,21 @@ func _upload_report(body: String) -> String:
 	if bytes.is_empty():
 		return ""
 	return await _upload(bytes, "text/markdown")
+
+## 送り先を 1 行で言う。**押す前に見えるところに出す。**
+##
+## 置き場があるときは、本文と画面の写しがそこへ上がる。無いときは
+## GitHubの「新しいIssue」の頁が開くだけで、外部へは何も置かれない。
+func _destination_note() -> String:
+	if settings == null or settings.drop_endpoint.is_empty():
+		return "送ると、GitHubのIssueを書く頁が開きます (外部の置き場は使いません)"
+	var host: String = String(settings.drop_endpoint)
+	var parts: PackedStringArray = host.split("://")
+	if parts.size() > 1:
+		host = parts[1]
+	host = host.split("/")[0]
+	return "送ると、本文と画面の写しが %s へ上がります" % host
+
 
 ## 置き場へ上げて、公開URLを返す。上げられなければ空を返す。
 ##
