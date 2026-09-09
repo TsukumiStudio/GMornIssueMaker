@@ -83,6 +83,8 @@ var _status_label: Label
 var _preview: TextureRect
 var _send_button: Button
 var _request: HTTPRequest
+## 送るときにブラウザを開くか。確認（verify）では開かない（開くと止まらない）。
+var open_externally := true
 var _screenshot: Image
 var _context_providers: Array[Callable] = []
 var _breadcrumbs: Array[String] = []
@@ -511,7 +513,8 @@ func _open_github_issue_page(title: String, payload: Dictionary) -> void:
 		tail = "&labels=" + ",".join(PackedStringArray(labels)).uri_encode()
 	body = _fit_to_url(body, head.length() + tail.length())
 	var url := head + body.uri_encode() + tail
-	OS.shell_open(url)
+	if open_externally:
+		OS.shell_open(url)
 	# **うまくいったときは控えを書かない。** 同じものがブラウザの中にも
 	# 置き場の md にもある。手元に貯めても誰も読まないゴミが増えるだけ。
 	# 書き出すのは「送れなかったとき」だけ（せっかく書いた内容が消えると、

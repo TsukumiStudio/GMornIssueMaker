@@ -117,6 +117,10 @@ func _run() -> void:
 	# 中継サーバーが無くても、リポジトリが決まっていれば報告の口は開く。
 	reporter.settings.endpoint = ""
 	reporter.settings.repository = "owner/name"
+	# **本物の置き場へは送らない・ブラウザも開かない。** 置き場があると写しと本文を
+	# 上げに行き、応答待ち（最長20秒×2）とブラウザ起動で確認が終わらなくなっていた。
+	reporter.settings.drop_endpoint = ""
+	reporter.open_externally = false
 	# GDScriptのラムダは外の変数を値で写す。中で書き換えても外へは戻らないので、
 	# 入れ物（配列）を渡して、その中身を書き換える。
 	var opened: Array[String] = [""]
