@@ -35,8 +35,6 @@ func _register_settings() -> void:
 		["enabled", true, TYPE_BOOL, PROPERTY_HINT_NONE, ""],
 		["repository", "", TYPE_STRING, PROPERTY_HINT_PLACEHOLDER_TEXT, "owner/repo"],
 		["endpoint", "", TYPE_STRING, PROPERTY_HINT_NONE, ""],
-		["drop_endpoint", "https://drop.tsukumistudio.com", TYPE_STRING, PROPERTY_HINT_NONE, ""],
-		["shared_secret", "", TYPE_STRING, PROPERTY_HINT_PASSWORD, ""],
 		["labels", "bug, in-game-report", TYPE_STRING, PROPERTY_HINT_NONE, ""],
 		["button_corner", "top_right", TYPE_STRING, PROPERTY_HINT_ENUM, "top_left,top_right,bottom_left,bottom_right"],
 		["button_text", "", TYPE_STRING, PROPERTY_HINT_NONE, ""],

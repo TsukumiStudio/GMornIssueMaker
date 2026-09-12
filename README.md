@@ -1,230 +1,60 @@
 # GMornIssueMaker
 
-## 概要
+Godotから[MornIssueBridge](https://github.com/TsukumiStudio/MornIssueBridge)へ不具合報告を送信するライブラリです。報告フォーム、スクリーンショット、実行環境、ゲームの状況をまとめて送信できます。
 
-遊んでいるその場から不具合を報告するためのGodotアドオン。
+## 環境構築
 
-画面の隅に小さな報告ボタン（虫の絵）を常に出す。押すとその瞬間の画面を撮り、動作中の状況を添えて中継サーバーへ送る。中継サーバーがGitHubのIssueを作る。
+1. [MornIssueBridgeのREADME](https://github.com/TsukumiStudio/MornIssueBridge#環境構築)に従って送信先を用意します。
+2. このリポジトリを`addons/gmorn_issue_maker`へ配置し、Godotの「プロジェクト設定 → プラグイン」で有効にします。
+3. プロジェクト設定に次の2項目を指定します。
 
-報告の中身は、人が読むためだけでなく**状況を機械が追えるように**組み立てる。版、環境、画面の大きさ、開いているシーン、直前の操作、アプリ固有の値を、決まった見出しの表で並べる。
-
-## 動作環境
-
-- Godot 4.x（4.7で確認）
-- 送信の口はどちらか一方でよい
-  - **中継サーバー**（自動でIssueが立つ。画像も自動で付く）。GitHubへIssueを作る権限のあるトークンが1つ要る。**アプリではなくサーバーに置く**
-  - **GitHubの頁を開く**（サーバー不要。書き込みはその人の権限。画像は貼ってもらう）
-- どちらも無いときは、報告をローカルへ書き出す
-
-画面のない実行（`--headless`）では撮影を飛ばし、状況だけで報告する。
-
-## 何ができるか
-
-- **画面いっぱいに出す**。報告の窓は画面の広さから余白を取って開き、文字も画面の高さに合わせて拡大する。取り込む側の設計解像度（縦2142など）は部品からは選べないので、固定の大きさにすると広い画面では豆粒になる。
-- **その瞬間の画面を撮る**。撮る前に報告ボタン自身を消し、描画が1回終わってから読むので、報告したかった画面がボタンで隠れない。縦1080に収まるよう縮める。
-- **状況を集めて表にする**。次の見出しで並ぶので、読む側は毎回同じ場所を見れば済む。**埋まらなかった行は出さない**（空欄が並ぶと「調べて分からなかった」のか「そもそも見ていない」のか読む側に区別がつかない）。ブラウザでは `OS.get_version()` などが空で返るので、閲覧ソフト側から拾える範囲で補う。
-
-  | 見出し | 中身 |
-  | --- | --- |
-  | アプリ | 名前、版、デバッグビルドかどうか |
-  | 環境 | OS、OSの版、エンジンの版、描画装置、言語、CPU、閲覧ソフト |
-  | 画面 | 窓の大きさ、描画範囲、全画面かどうか |
-  | 実行 | 毎秒の描画数、起動からの秒数、ノード数、静的メモリ、開いているシーン |
-  | ゲームの状況 | アプリが足したもの |
-  | 直前の出来事 | アプリが残したもの |
-
-- **アプリ固有の状況を足せる**。`Dictionary` を返す関数を登録する。
-- **直前の操作を残せる**。節目で1行ずつ記録する。直近30件が報告に並ぶ。
-- **送れなくても報告を捨てない**。通信に失敗したときだけ `user://gmorn_issue_maker/` へJSONで書き出す。**うまくいったときは書かない**（同じものがブラウザにも置き場にもあるので、手元に貯めても誰も読まないゴミが増えるだけ）。
-- **送り終えたら一行だけ**。「GitHubのIssueページを開きました」。何を本文へ入れたかは開いた頁を見れば分かる。読み手が何かしないといけないとき（写しを上げられず、貼ってもらう必要があるとき）だけ足す。
-- **アプリに鍵を持たせない**。配布物へ入れた鍵は取り出せるため、Issueを作る権限のあるトークンは同梱できない。アプリは送信先だけを持ち、鍵はサーバーが持つ。
-- **サーバーが無くても報告できる**。`repository` を設定しておくと、送信先が空のときはGitHubの「新しいIssue」の頁を見出しと本文を入れた状態で開く。書き込みはその人のGitHubの権限で行われるので、こちらが鍵を持たなくてよい。
-
-## 使い方
-
-### 1. 取り込む
-
-アドオン一式をリポジトリ直下へ置いてある。取り込む側の `addons/gmorn_issue_maker` へそのまま submodule として足せる。
-
-```
-git submodule add https://github.com/TsukumiStudio/GMornIssueMaker.git addons/gmorn_issue_maker
+```ini
+[gmorn_issue_maker]
+endpoint="https://your-worker.workers.dev/"
+repository="owner/repo"
 ```
 
-Godotのエディタで「プロジェクト設定 → プラグイン」から `GMornIssueMaker` を有効にする。自動読み込みへ `GMornIssueMaker` が登録される。
+日本語を表示する場合は`font_path`にフォントを指定します。未指定なら`gui/theme/custom_font`を使います。ボタンの位置・大きさやラベルは、同じ設定欄で変更できます。
 
-置き場所は決め打ちにしていない。別の名前の場所へ入れても、自分の居場所から辿って登録する。スクリプト同士の参照も相対なので、パスを直す必要は無い。
+GitHubトークンはMornIssueBridge側に設定します。旧版の`drop_endpoint`、`image_endpoint`、`shared_secret`は使用しません。環境変数`GMORN_ISSUE_ENDPOINT`と`GMORN_ISSUE_REPOSITORY`で送信先を上書きできます。
 
-### 2. 送信の口を用意する
+## 送信方法
 
-2つある。両方を設定した場合は中継サーバーが優先される。
+画面右上の報告ボタンを押し、見出しと本文を入力して送信します。報告時の画面と状況を添え、指定したリポジトリにIssueを作成します。送信結果はフォームに表示されます。
 
-#### A. サーバーを立てない（すぐ使える）
-
-`gmorn_issue_maker/repository` に `owner/name` を入れるだけ。送信先が空のとき、GitHubの「新しいIssue」の頁を見出しと本文を入れた状態で開く。
-
-書き込みはその人のGitHubの権限で行われるので、こちらが鍵を持たなくてよい。画面の写しだけは頁へ自動で入れられない（URLに画像は載せられない）ため、写しをファイルへ残し、その場所を写字板へ入れてから開く。報告する人は本文の欄へ貼るだけでよい。
-
-**画面の写しと、報告の全文が自動で付く。設定は要らない。** 送る前に置き場へ上げ、本文へ差し込む。開発用の置き場に**既定でつないである**ので、取り込んだだけで動く。上げられなかったときは従来の道へ落ちるので報告は止まらない。
-
-**状況の表は置き場の md へ送り、Issue には写しとリンクだけを載せる。**
-
-```
-![報告時の画面](写しのURL)
-
-詳細はこちら: 詳細のURL
-
----
-GMornIssueMaker v0.3.0
-```
-
-こうするのは、この方式のURLに長さの上限があるため。6000バイトしか入らず、日本語は1文字9バイトなので**本文は600文字ほどで切れる**。切れるのは末尾＝直前の操作の足あとで、いちばん知りたいところが消えていた。どうせ md を開くなら、Issue に同じものを（しかも切れた形で）並べる意味が無い。要約だけなら300バイト前後に収まり、切れる余地が消える。
-
-置き場へ送れなかったときだけ、従来どおり全文を詰めて切る。
-
-置き場は預かるだけで、Issueを作る権限は持たない。**鍵ではないので公開して構わない**（そもそもブラウザで動くものに入れた時点で開発者ツールから見える）。隠せない前提で、守りは置き場の側に寄せてある。
-
-| 置き場に効かせている守り | 中身 |
-| --- | --- |
-| 大きさ | 1ファイル10MBまで |
-| 回数 | 同じ相手から1時間60件まで |
-| 種類 | 画像と読み物だけ。`text/html` と `image/svg+xml` は受け取らない |
-| 名前 | 128ビットの乱数。次に置かれるURLを言い当てられない |
-| 寿命 | 参照が30日途絶えたら消える |
-
-**別の置き場に向けたいとき**は差し替えられる。置き場に求めるのは次の1つだけ。
-
-```
-POST で生バイトを受け取り（種類は Content-Type）、{"url": "..."} を含むJSONを返す
-```
-
-| したいこと | やり方 |
-| --- | --- |
-| 別の置き場へ | `gmorn_issue_maker/drop_endpoint` か `GMORN_ISSUE_DROP_ENDPOINT` にURLを入れる |
-| 置き場を使わない | 同じところに空文字を入れる。写しの場所を伝える従来の道になる |
-
-古い名前 `image_endpoint` でも読む。
-
-GitHubのアカウントを持たない人からは報告できない。広く配るものなら次のBを使う。
-
-#### B. 中継サーバーを立てる
-
-`server/cloudflare-worker.js` をそのまま使える。Cloudflare Workers に貼り、変数を3つ入れる。
-
-| 変数 | 中身 |
-| --- | --- |
-| `GITHUB_TOKEN` | Issueを作る権限のあるトークン |
-| `GITHUB_REPO` | `owner/name` |
-| `SHARED_SECRET` | アプリ側と揃える合言葉（空なら確認しない） |
-
-画像はIssueへ直接貼れないため、リポジトリの `gmorn-issue-screenshots` ブランチへ置いてから本文にリンクを差し込む。既定のブランチへ積むと報告のたびに履歴が汚れるので分けてある。ブランチが無ければ作る。
-
-**公開アプリでは、この送り先URLも合言葉も配布物から取り出せる。** 誰でも叩ける前提で作ってある。
-
-| 対策 | 効き方 |
-| --- | --- |
-| 受け取りの大きさ（3MB）・見出し200字・本文2万字の上限 | 常に効く |
-| 同じ相手から1時間20件までの回数制限 | KV を `RATE_LIMIT` の名前で結んだときだけ効く |
-
-```
-wrangler kv namespace create RATE_LIMIT
-```
-
-KV を結ばなければ回数制限は素通しになる（報告の口を塞がないほうを選んでいる）。ダッシュボードの Rate limiting rules を使ってもよい。
-
-自前で書く場合は、次の形のJSONをPOSTで受け取れればよい。`html_url` を含むJSONを返すと、アプリ側にIssueのURLが出る。
-
-```json
-{
-  "title": "見出し",
-  "body": "Markdown の本文",
-  "labels": ["bug"],
-  "context": { "...": "組み立て済みの状況" },
-  "screenshot_png_base64": "iVBORw0K...",
-  "library": { "name": "GMornIssueMaker", "version": "0.1.1" }
-}
-```
-
-### 3. 設定する
-
-決め方は3段ある。後のものが前のものを上書きする。
-
-1. 既定値
-2. プロジェクト設定（`gmorn_issue_maker/...`）
-3. 環境変数（`GMORN_ISSUE_*`）
-
-| 項目 | プロジェクト設定 | 環境変数 | 既定 |
-| --- | --- | --- | --- |
-| 送信先（中継サーバー） | `gmorn_issue_maker/endpoint` | `GMORN_ISSUE_ENDPOINT` | 空 |
-| 報告先リポジトリ | `gmorn_issue_maker/repository` | `GMORN_ISSUE_REPOSITORY` | 空 |
-| 置き場（写しと全文） | `gmorn_issue_maker/drop_endpoint` | `GMORN_ISSUE_DROP_ENDPOINT` | 開発用の置き場 |
-| 合言葉 | `gmorn_issue_maker/shared_secret` | `GMORN_ISSUE_SECRET` | 空 |
-| 出す／出さない | `gmorn_issue_maker/enabled` | `GMORN_ISSUE_DISABLED=1` で切る | 出す |
-| ボタンの位置 | `gmorn_issue_maker/button_corner` | — | `top_right` |
-| ボタンの文字 | `gmorn_issue_maker/button_text` | — | 空（虫の絵だけ） |
-| ボタンの大きさ | `gmorn_issue_maker/button_width` / `button_height` | — | `40` / `40` |
-| 描画の層 | `gmorn_issue_maker/canvas_layer` | — | `512` |
-| 札 | `gmorn_issue_maker/labels` | — | `bug, in-game-report` |
-
-送信先は配布物へ入るので、公開して構わないものを置く。合言葉のように配りたくないものは環境変数で渡す。
-
-### 4. アプリ固有の状況を足す
+コードから送る場合は、Autoloadの準備後に`send_report()`を呼び出します。
 
 ```gdscript
 func _ready() -> void:
-    var reporter := get_node_or_null("/root/GMornIssueMaker")
-    if reporter == null:
-        return
-    reporter.add_context_provider(func() -> Dictionary:
-        return {
-            "面": current_stage_name(),
-            "残機": player.lives,
-            "経過時間": "%.1f秒" % elapsed_seconds,
-        })
+    GMornIssueMaker.report_finished.connect(_on_report_finished)
+
+func report_problem() -> void:
+    var error := GMornIssueMaker.send_report("進行できません", "購入ボタンを押すと止まります。")
+    if error != OK:
+        print("送信を開始できませんでした: ", error)
+
+func _on_report_finished(success: bool, url: String, message: String) -> void:
+    print(message)
 ```
 
-部品が入っていない環境でも動くよう、`get_node_or_null` で確かめてから使う。
+第3引数に`Image`を渡すとPNG画像を添付します。省略時は撮影しません。送信者を記録する場合は、送信前に`GMornIssueMaker.settings.reporter_id`と`reporter_name`を設定します。
 
-### 5. 直前の操作を残す
+`send_report()`の`OK`は通信開始を表します。結果は`report_finished(success, url, message)`で通知します。送信中は`ERR_BUSY`、見出しが空なら`ERR_INVALID_PARAMETER`を返し、この2つの場合は通知しません。設定不足や通信開始時の失敗は、その場で失敗を通知します。
 
-不具合報告でいちばん足りないのは「何をしたか」である。画面遷移や購入など、節目で呼んでおくと経路を追える。
+ゲーム固有の状況や直前の操作も添付できます。
 
 ```gdscript
-reporter.leave_breadcrumb("タイトルからゲームへ")
-reporter.leave_breadcrumb("面3を開始")
-reporter.leave_breadcrumb("ショップで回復薬を購入")
+GMornIssueMaker.add_context_provider(func() -> Dictionary:
+    return {"ステージ": current_stage, "残機": lives})
+GMornIssueMaker.leave_breadcrumb("ショップを開きました")
 ```
 
-### その他の口
+`open_report_form()`でフォームを開き、`set_button_visible(false)`で標準ボタンを隠せます。`build_payload(title, description, screenshot)`は送信せずにJSON用の辞書を組み立てます。
 
-| 呼び出し | 何をするか |
-| --- | --- |
-| `open_report_form()` | ボタンを押したときと同じ流れを始める。任意のキーへ割り当てたいときに使う |
-| `set_button_visible(false)` | 撮影や配信のあいだだけボタンを隠す |
-| `collect_context()` | いまの状況を `Dictionary` で取る |
-| `report_started` / `report_finished(success, url, message)` | 送信の始まりと終わり |
+本文は状況を含めて20,000文字、見出しは200文字、PNGは2MiBまでです（文字数はMornIssueBridgeのUTF-16単位）。上限を超えた場合など、送信に失敗すると送信時の内容を`user://gmorn_issue_maker/`へJSONで保存します。自動再送はしません。通信が途切れた場合はIssueが作成済みの可能性があるため、再送前にリポジトリを確認してください。
 
-### 手を入れる
-
-`verify.sh` で、設定の読み込みから報告の組み立て、送り先が無いときの動きまでが通ることを確かめられる。一時の置き場へ最小のプロジェクトを作り、この部品を写して回す。
-
-```
-./verify.sh
-```
-
-取り込み先のプロジェクトから直に回すこともできる。
-
-```
-godot --headless --path <取り込み先のプロジェクト> --script addons/gmorn_issue_maker/verify.gd
-```
-
-**リポジトリ直下に `project.godot` は置かない。** 置くとGodotがそこを別のプロジェクトと見なし、
-**そのフォルダを丸ごとスキャンから外す**。submoduleとして取り込んだ場合、
-エディタで実行するぶんには動くのに、書き出した実行ファイルにだけアドオンが入らず、
-起動時に「Failed to instantiate an autoload」で落ちる。気づきにくいので置かないこと。
-
-単体で開いて触りたいときは、この部品を `addons/gmorn_issue_maker` として取り込んだ
-使い捨てのプロジェクトを別に作る。`verify.sh` がやっているのがまさにそれである。
+検証は`./verify.sh`で実行できます。GodotとPython 3を使い、一時プロジェクトとローカルHTTPサーバーで送信・失敗時の保存を確認します。
 
 ## ライセンス
 
-Unlicense（パブリックドメイン）。
+[The Unlicense](UNLICENSE)です。

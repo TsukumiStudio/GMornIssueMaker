@@ -27,10 +27,6 @@ const BREADCRUMB_LIMIT := 30
 ## 中継サーバー側で弾かれやすい。
 const SCREENSHOT_MAX_HEIGHT := 1080
 
-## GitHubの「新しいIssue」の頁を開くURLの上限。実際は8キロバイト程度まで通るが、
-## 途中の経路（ブラウザやプロキシ）で切られないよう余裕を見る。
-const URL_MAX_LENGTH := 6000
-
 ## 報告の窓は画面いっぱいから余白を取って出す。取り込む側の設計解像度が
 ## 分からないので、固定の大きさにすると広い画面では豆粒になる。
 const PANEL_MARGIN_RATIO := 0.06
@@ -49,7 +45,7 @@ const UI_MIN_SCALE := 0.85
 
 const LIBRARY_NAME := "GMornIssueMaker"
 ## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
-const VERSION := "0.3.3"
+const VERSION := "0.4.0"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -83,8 +79,7 @@ var _status_label: Label
 var _preview: TextureRect
 var _send_button: Button
 var _request: HTTPRequest
-## 送るときにブラウザを開くか。確認（verify）では開かない（開くと止まらない）。
-var open_externally := true
+var _pending_payload: Dictionary = {}
 var _screenshot: Image
 var _context_providers: Array[Callable] = []
 var _breadcrumbs: Array[String] = []
@@ -110,6 +105,8 @@ func _ready() -> void:
 	_build_ui()
 	_request = HTTPRequest.new()
 	_request.timeout = REQUEST_TIMEOUT
+	_request.max_redirects = 0
+	_request.body_size_limit = 65536
 	add_child(_request)
 	_request.request_completed.connect(_on_request_completed)
 
@@ -144,6 +141,7 @@ func open_report_form() -> void:
 	if _sending or not is_instance_valid(_panel) or _panel.visible:
 		return
 	_fit_to_screen()
+	_destination.text = _destination_note()
 	await _capture_screenshot()
 	_title_edit.text = ""
 	_body_edit.text = ""
@@ -314,9 +312,7 @@ func _build_panel() -> void:
 	_status_label.add_theme_color_override("font_color", ACCENT_COLOR)
 	box.add_child(_status_label)
 
-	# **どこへ行くのかを、押す前に言う。**
-	# 画面の写しと本文は、置き場 (drop_endpoint) がある場合そこへ上がる。
-	# 送る人にそれが伝わっていなかった — 押してから気づくものではない。
+	# 送信前に、Issueの作成先を表示します。
 	_destination = Label.new()
 	_destination.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_destination.add_theme_color_override("font_color", MUTED_COLOR)
@@ -442,231 +438,50 @@ func _capture_screenshot() -> void:
 	_preview.texture = ImageTexture.create_from_image(image)
 
 func _send_report() -> void:
+	send_report(_title_edit.text, _body_edit.text, _screenshot)
+
+## MornIssueBridgeへ送信します。OKは通信開始を表し、結果はreport_finishedで通知します。
+## 同時送信はERR_BUSY、空の見出しはERR_INVALID_PARAMETERを返し、通知しません。
+func send_report(title: String, description: String, screenshot: Image = null) -> Error:
 	if _sending:
-		return
-	var title := _title_edit.text.strip_edges()
+		return ERR_BUSY
+	title = title.strip_edges()
 	if title.is_empty():
 		_status_label.text = "見出しを書いてください。"
-		return
+		return ERR_INVALID_PARAMETER
+	_pending_payload = build_payload(title, description, screenshot).duplicate(true)
 	_sending = true
 	_send_button.disabled = true
+	_title_edit.editable = false
+	_body_edit.editable = false
 	_status_label.text = "送っています…"
 	report_started.emit()
-	var payload := build_payload(title, _body_edit.text)
-	if settings.endpoint.is_empty():
-		# 中継サーバーが無くても、GitHubの頁を開けば報告はできる。
-		if not settings.repository.is_empty():
-			# 画像を上げるあいだ待つので await。呼び出し側は待たなくてよい。
-			_open_github_issue_page(title, payload)
-			return
-		_finish(false, "", "送り先も報告先のリポジトリも設定されていません。", payload)
-		return
-	var headers := PackedStringArray(["Content-Type: application/json"])
-	if not settings.shared_secret.is_empty():
-		headers.append("X-GMorn-Token: " + settings.shared_secret)
-	var error := _request.request(settings.endpoint, headers, HTTPClient.METHOD_POST, JSON.stringify(payload))
+	if settings.endpoint.is_empty() or settings.repository.is_empty():
+		_finish(false, "", "MornIssueBridgeのURLとリポジトリを設定してください。")
+		return ERR_UNCONFIGURED
+	var error := _request.request(settings.endpoint,
+		PackedStringArray(["Content-Type: application/json"]),
+		HTTPClient.METHOD_POST, JSON.stringify(_pending_payload))
 	if error != OK:
-		_finish(false, "", "送れませんでした（%d）。" % error, payload)
+		_finish(false, "", "送信を開始できませんでした（%d）。" % error)
+	return error
 
-## GitHubの「新しいIssue」の頁を、見出しと本文を入れた状態で開く。
-##
-## 中継サーバーが無いときの道。書き込みはその人のGitHubの権限で行われるので、
-## こちらが鍵を持たなくてよい。中継サーバーを立てるまでの間や、鍵を置きたく
-## ない配り方でも、報告の口を閉じずに済む。
-##
-## 画面の写しは、URLへ直接載せられない。`drop_endpoint` があれば先に置き場へ
-## 上げて、本文に画像として埋め込む。無ければ従来どおり、写しの場所を伝えて
-## 貼ってもらう。
-##
-## **本文もURLへ載せる以上、長さの上限から逃げられない。** 6000バイトしか
-## 入らず、日本語は1文字9バイトなので600文字ほどで切れる。切れるのは末尾＝
-## 直前の操作の足あとで、いちばん知りたいところが消えていた。
-## 置き場があるときは全文を Markdown で上げ、**切られない位置（先頭）** に
-## そのリンクを置く。
-func _open_github_issue_page(title: String, payload: Dictionary) -> void:
-	var body := String(payload.get("body", ""))
-	var screenshot_path := ""
-	var image_url := await _upload_screenshot()
-	if not image_url.is_empty():
-		# 画像は本文の先頭へ置く。読む側が最初に見るのは絵である。
-		body = "![報告時の画面](%s)\n\n%s" % [image_url, body]
-	else:
-		screenshot_path = _save_screenshot_file()
-		if not screenshot_path.is_empty():
-			body = "（画面の写し: %s をこの欄へ貼ってください）\n\n%s" % [screenshot_path, body]
-			DisplayServer.clipboard_set(screenshot_path)
-	# 詳しい表は置き場の md へ送り、**Issueには写しとリンクだけを載せる**。
-	#
-	# 状況の表をURLに詰め込むと6000バイトを超えて切れる。切れるのは末尾＝
-	# 直前の操作の足あとで、いちばん知りたいところだった。どうせ md を開くなら、
-	# Issue に同じものを（しかも切れた形で）並べる意味が無い。
-	#
-	# 上げられなかったときだけ、従来どおり全文を詰めて切る。
-	var report_url := await _upload_report(body)
-	if not report_url.is_empty():
-		body = _summary_body(image_url, screenshot_path, report_url)
-	var head := "https://github.com/%s/issues/new?title=%s&body=" % [
-		settings.repository, title.uri_encode()]
-	var tail := ""
-	var labels: Array = payload.get("labels", [])
-	if not labels.is_empty():
-		tail = "&labels=" + ",".join(PackedStringArray(labels)).uri_encode()
-	body = _fit_to_url(body, head.length() + tail.length())
-	var url := head + body.uri_encode() + tail
-	if open_externally:
-		OS.shell_open(url)
-	# **うまくいったときは控えを書かない。** 同じものがブラウザの中にも
-	# 置き場の md にもある。手元に貯めても誰も読まないゴミが増えるだけ。
-	# 書き出すのは「送れなかったとき」だけ（せっかく書いた内容が消えると、
-	# 二度目は書いてもらえない）。
-	# **うまくいったときは一行だけ。** 送り終えた人に要るのは「開いた」の一言で、
-	# 何を本文へ入れたかは開いた頁を見れば分かる。控えの場所も同じ。
-	# 読み手が何かしないといけないときだけ足す。
-	var message := "GitHubのIssueページを開きました"
-	if image_url.is_empty() and not screenshot_path.is_empty():
-		# 写しを上げられなかったときだけ。貼る作業が残っているので伝える。
-		message += "\n画面の写しの場所を写字板へ入れました。本文の欄へ貼ってください。"
-	_sending = false
-	_send_button.disabled = false
-	_status_label.text = message
-	report_finished.emit(true, url, message)
-
-## 置き場へ送れたときのIssue本文。写し・詳細へのリンク・部品の版だけ。
-##
-## 読む側がまず見るのは絵で、次に開くのは詳細。Issueに表を並べても、
-## URLの上限で切れた不完全な写しになるだけなので載せない。
-func _summary_body(image_url: String, screenshot_path: String, report_url: String) -> String:
-	var lines := PackedStringArray()
-	if not image_url.is_empty():
-		lines.append("![報告時の画面](%s)" % image_url)
-	elif not screenshot_path.is_empty():
-		lines.append("（画面の写し: %s をこの欄へ貼ってください）" % screenshot_path)
-	lines.append("")
-	lines.append("詳細はこちら: %s" % report_url)
-	lines.append("")
-	lines.append("---")
-	lines.append("%s v%s" % [LIBRARY_NAME, _library_version()])
-	return "\n".join(lines)
-
-## URLの長さに収まるところまで本文を切る。全文は控えに残るので情報は失われない。
-##
-## **文字数ではなくURLエンコード後の長さで測る。** 日本語は1文字が %E3%81%82 の
-## 9バイトになるので、6000文字で切ると54000バイトのURLになり、GitHubが受け取れない。
-## 実際に「Issueが立てられない」という報告があった。
-func _fit_to_url(body: String, reserved: int) -> String:
-	if reserved + body.uri_encode().length() <= URL_MAX_LENGTH:
-		return body
-	# 置き場へ送れたときは要約だけを載せるので、ここへは来ない。
-	# 来るのは置き場が無いときで、そのときは全文がどこにも無い。
-	# 「控えにあります」と書くと嘘になる。
-	var suffix := "\n\n（以下省略。URLの長さの上限で切れました）"
-	var room := URL_MAX_LENGTH - reserved - suffix.uri_encode().length()
-	if room <= 0:
-		return suffix
-	# 1文字あたりのバイト数は文字によって違うので、入る長さを二分探索で決める
-	var low := 0
-	var high := body.length()
-	while low < high:
-		var middle := (low + high + 1) / 2
-		if body.substr(0, middle).uri_encode().length() <= room:
-			low = middle
-		else:
-			high = middle - 1
-	return body.substr(0, low) + suffix
-
-## 画面の写しを画像置き場へ上げ、そのURLを返す。上げられなければ空を返す。
-##
-## 置き場は画像を預かるだけで、Issueを作る権限は持たない。だからURLを配布物へ
-## 入れてよい。GitHubへ直接上げる道は書き込み権限のあるトークンが要るので、
-## 配布するアプリからは使えない。
-##
-## 上げられなくても報告は止めない。写しの場所を伝える従来の道へ落ちる。
-func _upload_screenshot() -> String:
-	if _screenshot == null:
-		return ""
-	var png := _screenshot.save_png_to_buffer()
-	if png.is_empty():
-		return ""
-	return await _upload(png, "image/png")
-
-## 報告の全文を Markdown で置き場へ上げ、そのURLを返す。
-##
-## GitHubの頁を開く方式にはURLの長さの上限があり、本文は600文字ほどで切れる。
-## **切れるのは末尾＝直前の操作の足あと**で、いちばん知りたいところが消える。
-## 全文を別に置いてリンクすれば、本文が切れても読む側は辿れる。
-func _upload_report(body: String) -> String:
-	var bytes := body.to_utf8_buffer()
-	if bytes.is_empty():
-		return ""
-	return await _upload(bytes, "text/markdown")
-
-## 送り先を 1 行で言う。**押す前に見えるところに出す。**
-##
-## 置き場があるときは、本文と画面の写しがそこへ上がる。無いときは
-## GitHubの「新しいIssue」の頁が開くだけで、外部へは何も置かれない。
 func _destination_note() -> String:
-	if settings == null or settings.drop_endpoint.is_empty():
-		return "送ると、GitHubのIssueを書く頁が開きます (外部の置き場は使いません)"
-	var host: String = String(settings.drop_endpoint)
-	var parts: PackedStringArray = host.split("://")
-	if parts.size() > 1:
-		host = parts[1]
-	host = host.split("/")[0]
-	return "送ると、本文と画面の写しが %s へ上がります" % host
+	return "本文・画面・状況を送信し、%s にIssueを作成します。" % settings.repository
 
-
-## 置き場へ上げて、公開URLを返す。上げられなければ空を返す。
-##
-## 置き場は預かるだけで、Issueを作る権限は持たない。だからURLを配布物へ
-## 入れてよい。GitHubへ直接上げる道は書き込み権限のあるトークンが要るので、
-## 配布するアプリからは使えない。
-func _upload(bytes: PackedByteArray, content_type: String) -> String:
-	if settings.drop_endpoint.is_empty():
-		return ""
-	var uploader := HTTPRequest.new()
-	uploader.timeout = REQUEST_TIMEOUT
-	add_child(uploader)
-	var error := uploader.request_raw(
-		settings.drop_endpoint, PackedStringArray(["Content-Type: " + content_type]),
-		HTTPClient.METHOD_POST, bytes)
-	if error != OK:
-		uploader.queue_free()
-		return ""
-	var result: Array = await uploader.request_completed
-	uploader.queue_free()
-	# [result, response_code, headers, body]
-	if int(result[1]) < 200 or int(result[1]) >= 300:
-		return ""
-	var parsed = JSON.parse_string((result[3] as PackedByteArray).get_string_from_utf8())
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return ""
-	return String(parsed.get("url", ""))
-
-## 画面の写しをファイルへ残し、その場所を返す。撮れていなければ空を返す。
-func _save_screenshot_file() -> String:
-	if _screenshot == null:
-		return ""
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(FALLBACK_DIRECTORY))
-	var path := "%s/screenshot_%s.png" % [FALLBACK_DIRECTORY, _file_stamp()]
-	if _screenshot.save_png(path) != OK:
-		return ""
-	return ProjectSettings.globalize_path(path)
-
-## 送る中身を組み立てる。中継サーバーはこの形を受け取る。
-##
-## 画面は base64 で入れる。別送りにすると、片方だけ届いたときに本文と画像が
-## 食い違う。
-func build_payload(title: String, description: String) -> Dictionary:
-	var context := collect_context()
+## 本文と画像を一緒に送信します。状況はMarkdown本文へ含めます。
+func build_payload(title: String, description: String, screenshot: Image = null) -> Dictionary:
 	var payload := {
+		"repository": settings.repository,
 		"title": title,
-		"body": build_body(description, context),
+		"body": build_body(description, collect_context()),
 		"labels": settings.labels,
-		"context": context,
-		"library": {"name": LIBRARY_NAME, "version": _library_version()},
 	}
-	if _screenshot != null:
-		payload["screenshot_png_base64"] = Marshalls.raw_to_base64(_screenshot.save_png_to_buffer())
+	for key in ["reporter_id", "reporter_name"]:
+		if not String(settings.get(key)).is_empty():
+			payload[key] = settings.get(key)
+	if screenshot != null:
+		payload["screenshot_png_base64"] = Marshalls.raw_to_base64(screenshot.save_png_to_buffer())
 	return payload
 
 ## 状況を集める。決まった見出しで並べ、読む側が毎回同じ場所を見れば済むようにする。
@@ -791,45 +606,58 @@ func _format_value(value: Variant) -> String:
 		return "はい" if value else "いいえ"
 	return String(str(value))
 
-func _on_request_completed(_result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	var text := body.get_string_from_utf8()
-	var parsed: Variant = JSON.parse_string(text)
-	var url := ""
-	if parsed is Dictionary:
-		url = String((parsed as Dictionary).get("html_url", (parsed as Dictionary).get("url", "")))
-	if response_code >= 200 and response_code < 300:
-		_finish(true, url, "送りました。" if url.is_empty() else "送りました: " + url, {})
-		return
-	var message := "送れませんでした（%d）。" % response_code
-	_finish(false, "", message, build_payload(_title_edit.text.strip_edges(), _body_edit.text))
+func _on_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	var json := JSON.new()
+	var parsed: Variant = json.data if json.parse(body.get_string_from_utf8()) == OK else null
+	if result == HTTPRequest.RESULT_SUCCESS and response_code == 201 and parsed is Dictionary:
+		var number: Variant = parsed.get("number")
+		var url: Variant = parsed.get("html_url")
+		if (number is int or number is float) and number > 0 and number == floor(number) and url is String:
+			var expected := "https://github.com/%s/issues/%d" % [_pending_payload.repository, number]
+			if url.to_lower() == expected.to_lower():
+				_finish(true, url, "送りました: " + url)
+				return
+	var message := "送信を確認できませんでした（HTTP %d、通信結果 %d）。" % [response_code, result]
+	if parsed is Dictionary and parsed.get("error") is String:
+		message += "\n" + parsed.error
+	_finish(false, "", message)
 
-## 送信の結末をまとめて扱う。
-##
-## 失敗したときは報告を捨てずに書き出す。せっかく書いた内容が消えると、
-## 二度目は書いてもらえない。
-func _finish(success: bool, url: String, message: String, payload: Dictionary) -> void:
+func _finish(success: bool, url: String, message: String) -> void:
+	if not success:
+		var saved := _save_fallback(_pending_payload)
+		message += "\n報告は %s に残しました。" % saved if not saved.is_empty() else "\n報告の控えも保存できませんでした。入力内容をコピーしてください。"
+	_pending_payload = {}
 	_sending = false
-	_send_button.disabled = false
-	if not success and not payload.is_empty():
-		var saved := _save_fallback(payload)
-		if not saved.is_empty():
-			message += "\n報告は %s に残しました。" % saved
+	_send_button.disabled = success
+	_title_edit.editable = true
+	_body_edit.editable = true
 	_status_label.text = message
 	report_finished.emit(success, url, message)
-	if success:
-		await get_tree().create_timer(1.5).timeout
-		if is_instance_valid(_panel):
-			_close_panel()
 
 func _save_fallback(payload: Dictionary) -> String:
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(FALLBACK_DIRECTORY))
-	var path := "%s/report_%s.json" % [FALLBACK_DIRECTORY, _file_stamp()]
-	var file := FileAccess.open(path, FileAccess.WRITE)
+	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(FALLBACK_DIRECTORY)) != OK:
+		return ""
+	var path := "%s/report_%s_%s.json" % [FALLBACK_DIRECTORY, _file_stamp(), Crypto.new().generate_random_bytes(8).hex_encode()]
+	var temporary := path + ".tmp"
+	var file := FileAccess.open(temporary, FileAccess.WRITE)
 	if file == null:
 		return ""
-	file.store_string(JSON.stringify(payload, "\t"))
+	var serialized := JSON.stringify(payload, "\t")
+	file.store_string(serialized)
+	file.flush()
+	var error := file.get_error()
 	file.close()
-	return ProjectSettings.globalize_path(path)
+	if error != OK or not _valid_fallback(temporary, serialized):
+		DirAccess.remove_absolute(temporary)
+		return ""
+	if DirAccess.rename_absolute(temporary, path) != OK:
+		DirAccess.remove_absolute(temporary)
+		return ""
+	return ProjectSettings.globalize_path(path) if _valid_fallback(path, serialized) else ""
+
+func _valid_fallback(path: String, serialized: String) -> bool:
+	var content := FileAccess.get_file_as_string(path)
+	return content == serialized and JSON.parse_string(content) is Dictionary
 
 ## ファイル名へ使える時刻。記号を落として並び順が保てる形にする。
 func _file_stamp() -> String:

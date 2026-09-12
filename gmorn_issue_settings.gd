@@ -11,54 +11,12 @@ extends RefCounted
 ##   2. プロジェクト設定（`gmorn_issue_maker/...`）
 ##   3. 環境変数（`GMORN_ISSUE_*`）
 ##
-## プロジェクト設定は配布物へ入るので、送り先のように公開して構わないものを
-## 置く。合言葉のように配りたくないものは環境変数で渡す。どちらにも書けるが、
-## 配布物に入れた鍵は取り出せることを前提に決める。
-
-## 既定でつないである置き場。
-##
-## **公開して構わない。** 預かるだけでIssueを作る権限は持たないので、鍵ではない。
-## そもそもブラウザで動くものに入れた時点で、開発者ツールから見える。
-## 隠せない前提で、守りは置き場の側（大きさの上限・回数の制限・受け取る種類の
-## 限定・一定期間で消える）に寄せてある。
-##
-## 差し替え・切断のしかたは `drop_endpoint` の説明を見ること。
-const DEFAULT_DROP_ENDPOINT := "https://drop.tsukumistudio.com"
-
-## 送り先。中継サーバーのURL。空でも `repository` があれば報告できる。
+## MornIssueBridgeのURLと、Issueを作成するリポジトリを指定します。
 var endpoint := ""
-## 置き場のURL。写しと報告の全文を預けるだけの、小さなサーバー。
-##
-## 入れておくと、GitHubの頁を開く方式でも
-##
-## - 画面の写しを先に上げて、本文へ画像として埋め込める
-## - **報告の全文を Markdown で上げて、本文からリンクできる**
-##
-## 全文のリンクが要るのは、GitHubの頁を開く方式にURLの長さの上限があるため。
-## 6000バイトしか載らず、日本語は1文字9バイトなので**本文は600文字ほどで切れる**。
-## 直前の操作の足あとが途中で消えて、いちばん知りたいところが読めなかった。
-##
-## **置くだけなので鍵は要らない**（Issueを作る権限は持たせない）。だから
-## **既定でつなげてある。** 取り込んだだけで写しも全文も付く。
-##
-## 別の置き場に向けたいなら `gmorn_issue_maker/drop_endpoint`、
-## 環境変数 `GMORN_ISSUE_DROP_ENDPOINT` で差し替える。空にすれば使わない。
-## 古い名前 `image_endpoint` でも読む。
-##
-## 置き場に求めるのはこれだけ。
-##
-##   POST で生バイトを受け取り（種類は Content-Type）、
-##   `{"url": "..."}` を含むJSONを返す
-var drop_endpoint := DEFAULT_DROP_ENDPOINT
-## 報告先のリポジトリ（`owner/name`）。中継サーバーが無いときに使う。
-##
-## 中継サーバーが無くても、GitHubの「新しいIssue」の頁を見出しと本文を入れた
-## 状態で開けば報告はできる。書き込みはその人のGitHubの権限で行われるので、
-## こちらが鍵を持つ必要が無い。画面の写しだけは自動で添えられないため、
-## 場所を伝えて貼ってもらう。
 var repository := ""
-## 中継サーバーが受け付けるときに確かめる合言葉。空なら付けない。
-var shared_secret := ""
+## 送信者情報は任意です。ログイン中のユーザーなどをゲーム側で設定できます。
+var reporter_id := ""
+var reporter_name := ""
 ## 報告ボタンを出すかどうか。既定では、書き出したビルドでも出す。
 ## 配布物で出したくない場合はプロジェクト設定で切る。
 var enabled := true
@@ -94,17 +52,9 @@ const SETTING_PREFIX := "gmorn_issue_maker/"
 func load_from_environment() -> void:
 	var settings := self
 	settings.endpoint = String(_setting("endpoint", settings.endpoint))
-	# 置き場は画像だけでなく報告の全文も預かるようになったので名前を変えた。
-	# 先に入れた人の設定を壊さないよう、古い名前も読む。
-	#
-	# **空を書いたら空のまま**にする（既定へ戻さない）。置き場へ送りたくない
-	# 取り込み方があるので、明示的に切れる道を残す。
-	settings.drop_endpoint = String(_setting("image_endpoint", settings.drop_endpoint))
-	settings.drop_endpoint = String(_setting("drop_endpoint", settings.drop_endpoint))
-	settings.drop_endpoint = _environment(
-		"GMORN_ISSUE_DROP_ENDPOINT", settings.drop_endpoint)
 	settings.repository = String(_setting("repository", settings.repository))
-	settings.shared_secret = String(_setting("shared_secret", settings.shared_secret))
+	settings.reporter_id = String(_setting("reporter_id", settings.reporter_id))
+	settings.reporter_name = String(_setting("reporter_name", settings.reporter_name))
 	settings.enabled = bool(_setting("enabled", settings.enabled))
 	settings.button_corner = String(_setting("button_corner", settings.button_corner))
 	settings.button_text = String(_setting("button_text", settings.button_text))
@@ -119,14 +69,13 @@ func load_from_environment() -> void:
 	if settings.font_path.is_empty():
 		settings.font_path = String(_setting_at("gui/theme/custom_font", ""))
 	var labels: Variant = _setting("labels", settings.labels)
-	if labels is Array:
-		settings.labels = labels as Array
+	if labels is Array or labels is PackedStringArray:
+		settings.labels = Array(labels)
 	elif labels is String and not String(labels).is_empty():
 		settings.labels = Array(String(labels).split(",", false))
 	# 環境変数は最後に効かせる。手元だけ送り先を変えたいときに使う。
 	settings.endpoint = _environment("GMORN_ISSUE_ENDPOINT", settings.endpoint)
 	settings.repository = _environment("GMORN_ISSUE_REPOSITORY", settings.repository)
-	settings.shared_secret = _environment("GMORN_ISSUE_SECRET", settings.shared_secret)
 	var disabled := OS.get_environment("GMORN_ISSUE_DISABLED")
 	if disabled == "1" or disabled.to_lower() == "true":
 		settings.enabled = false
