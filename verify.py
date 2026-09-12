@@ -19,7 +19,7 @@ class Bridge(http.server.BaseHTTPRequestHandler):
         assert not self.headers.get('X-GMorn-Token')
         assert not self.headers.get('Authorization')
         assert payload['repository'] == 'example/game'
-        assert set(payload) <= {'repository', 'title', 'body', 'screenshot_png_base64'}
+        assert set(payload) <= {'repository', 'title', 'body', 'labels', 'screenshot_png_base64'}
         status, body = 201, {'html_url': 'https://github.com/example/game/issues/42', 'number': 42}
         if payload['title'] == '拒否':
             status, body = 429, {'error': '送信回数の上限です。'}
@@ -69,5 +69,7 @@ with tempfile.TemporaryDirectory(prefix='gmorn-issue-verify-') as directory:
     assert result.returncode == 0 and 'GMORN ISSUE MAKER VERIFY: PASS' in result.stdout
     assert 'SCRIPT ERROR' not in result.stderr and 'ERROR:' not in result.stderr
     assert len(requests) == 5, requests
+    for payload in requests:
+        assert payload.get('labels') == ['bug', 'in-game-report'], payload.get('labels')
     assert '詳細' * 800 in requests[0]['body']
     assert requests[0]['screenshot_png_base64'].startswith('iVBOR')

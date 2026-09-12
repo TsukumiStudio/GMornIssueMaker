@@ -45,7 +45,7 @@ const UI_MIN_SCALE := 0.85
 
 const LIBRARY_NAME := "GMornIssueMaker"
 ## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
-const VERSION := "0.5.0"
+const VERSION := "0.5.1"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -436,6 +436,7 @@ func _build_payload(title: String, description: String, screenshot: Image = null
 		"repository": settings.repository,
 		"title": title,
 		"body": _build_body(description, _collect_context()),
+		"labels": ["bug", "in-game-report"],
 	}
 	if screenshot != null:
 		payload["screenshot_png_base64"] = Marshalls.raw_to_base64(screenshot.save_png_to_buffer())
