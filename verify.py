@@ -19,8 +19,7 @@ class Bridge(http.server.BaseHTTPRequestHandler):
         assert not self.headers.get('X-GMorn-Token')
         assert not self.headers.get('Authorization')
         assert payload['repository'] == 'example/game'
-        assert payload['reporter_id'] == 'player-1'
-        assert payload['reporter_name'] == '送信者'
+        assert set(payload) <= {'repository', 'title', 'body', 'screenshot_png_base64'}
         status, body = 201, {'html_url': 'https://github.com/example/game/issues/42', 'number': 42}
         if payload['title'] == '拒否':
             status, body = 429, {'error': '送信回数の上限です。'}
@@ -49,16 +48,20 @@ with tempfile.TemporaryDirectory(prefix='gmorn-issue-verify-') as directory:
     target.mkdir(parents=True)
     for source in [*addon.glob('*.gd'), addon / 'plugin.cfg']:
         shutil.copy(source, target)
+    shutil.copytree(addon / 'fonts', target / 'fonts')
     (work / 'verify.gd').write_text((addon / 'verify.gd').read_text().replace('res://gmorn_', 'res://addons/gmorn_issue_maker/gmorn_'))
     shutil.copy(addon / 'plugin.cfg', work)
     (work / 'project.godot').write_text('config_version=5\n[application]\nconfig/name="GMornIssueMaker Verify"\nconfig/features=PackedStringArray("4.7")\n')
-    env = {key: value for key, value in os.environ.items() if not key.startswith('GMORN_ISSUE_')}
+    env = dict(os.environ)
     env.update(HOME=str(work / 'home'), XDG_DATA_HOME=str(work / 'data'))
+    godot = env.get('GODOT_BIN', shutil.which('godot') or '/Applications/Godot.app/Contents/MacOS/Godot')
+    imported = subprocess.run([godot, '--headless', '--editor', '--path', str(work), '--quit'], env=env, capture_output=True, text=True, timeout=30)
+    assert imported.returncode == 0 and 'ERROR:' not in imported.stdout + imported.stderr, imported.stdout + imported.stderr
     with http.server.ThreadingHTTPServer(('127.0.0.1', 0), Bridge) as server:
         threading.Thread(target=server.serve_forever, daemon=True).start()
         env['MOCK_BRIDGE_URL'] = f'http://127.0.0.1:{server.server_port}/'
         try:
-            result = subprocess.run([env.get('GODOT_BIN', shutil.which('godot') or '/Applications/Godot.app/Contents/MacOS/Godot'), '--headless', '--path', str(work), '--script', 'verify.gd'], env=env, capture_output=True, text=True, timeout=30)
+            result = subprocess.run([godot, '--headless', '--path', str(work), '--script', 'verify.gd'], env=env, capture_output=True, text=True, timeout=30)
         finally:
             server.shutdown()
     print(result.stdout, end='')

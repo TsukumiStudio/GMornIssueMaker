@@ -16,7 +16,7 @@ endpoint="https://YOUR-WORKER.workers.dev/"
 repository="owner/repo"
 ```
 
-日本語を表示する場合は、同じ設定欄の`font_path`にフォントのパスを指定します。`gui/theme/custom_font`が設定済みなら省略できます。
+日本語フォントを同梱しているため、フォントの準備は不要です。
 
 ## 送信方法
 
@@ -30,8 +30,10 @@ GMornIssueMaker.send_report("画面が進みません", "購入ボタンを押�
 
 第3引数に`Image`を渡すと画像を添付します。送信結果は`report_finished(success, url, message)`で受け取れます。
 
+ゲーム固有の状況は`add_context_provider()`、直前の操作は`leave_breadcrumb()`で添えられます。
+
 送信に失敗した場合は、報告の控えを`user://gmorn_issue_maker/`に保存します。
 
 ## ライセンス
 
-[The Unlicense](UNLICENSE)を適用しています。
+コードは[The Unlicense](UNLICENSE)、同梱の[Noto Sans JP](https://github.com/google/fonts/tree/66a36c8c94b1a5d992ee4e7f392fccfe4945767c/ofl/notosansjp)は[SIL Open Font License 1.1](fonts/OFL.txt)です。

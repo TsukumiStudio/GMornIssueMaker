@@ -45,7 +45,7 @@ const UI_MIN_SCALE := 0.85
 
 const LIBRARY_NAME := "GMornIssueMaker"
 ## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
-const VERSION := "0.4.0"
+const VERSION := "0.5.0"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -61,12 +61,14 @@ const BUG_ICON_SVG := """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24
 </svg>"""
 ## 虫の絵の一辺（画素）。ボタンより少し小さくして余白を残す。
 const BUG_ICON_SIZE := 22
+const BUTTON_SIZE := Vector2(40.0, 40.0)
+const BUTTON_MARGIN := Vector2(12.0, 12.0)
 
 ## 設定の実体。`class_name` で引くとエディタが一度走査するまで名前が引けず、
 ## 取り込んだ直後の自動実行で落ちる。読み込みで直に指す。
 const SETTINGS_SCRIPT := preload("gmorn_issue_settings.gd")
+const DEFAULT_FONT := preload("fonts/default_font.tres")
 
-signal report_started
 signal report_finished(success: bool, url: String, message: String)
 
 var settings: RefCounted
@@ -95,12 +97,9 @@ var _signature: Label
 
 func _ready() -> void:
 	settings = SETTINGS_SCRIPT.new()
-	settings.load_from_environment()
-	if not settings.enabled:
-		queue_free()
-		return
+	settings.load_from_project()
 	# いちばん上へ出す。遊びの画面がどれだけ層を重ねても、報告ボタンは隠れない。
-	layer = settings.canvas_layer
+	layer = 512
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build_ui()
 	_request = HTTPRequest.new()
@@ -119,9 +118,6 @@ func add_context_provider(provider: Callable) -> void:
 	if not _context_providers.has(provider):
 		_context_providers.append(provider)
 
-func remove_context_provider(provider: Callable) -> void:
-	_context_providers.erase(provider)
-
 ## 出来事を記録する。報告に直前の流れとして並ぶ。
 ##
 ## 不具合報告でいちばん足りないのは「何をしたか」である。画面遷移や購入など
@@ -131,13 +127,8 @@ func leave_breadcrumb(message: String) -> void:
 	if _breadcrumbs.size() > BREADCRUMB_LIMIT:
 		_breadcrumbs.remove_at(0)
 
-## 報告ボタンの出し入れ。撮影や配信のときに隠せるようにする。
-func set_button_visible(value: bool) -> void:
-	if is_instance_valid(_button):
-		_button.visible = value
-
 ## 押されたときと同じ流れを外から始める。任意のキーへ割り当てたいときに使う。
-func open_report_form() -> void:
+func _open_report_form() -> void:
 	if _sending or not is_instance_valid(_panel) or _panel.visible:
 		return
 	_fit_to_screen()
@@ -152,20 +143,18 @@ func open_report_form() -> void:
 
 func _build_ui() -> void:
 	_button = Button.new()
-	_button.text = settings.button_text
-	if settings.button_text.is_empty():
-		_button.icon = _bug_icon()
-		_button.expand_icon = true
+	_button.icon = _bug_icon()
+	_button.expand_icon = true
 	_button.tooltip_text = "この瞬間の画面と状況を添えて報告する"
 	_button.theme = _ui_theme()
 	_button.focus_mode = Control.FOCUS_NONE
-	_button.set_anchors_preset(_button_preset())
-	_button.offset_left = settings.button_margin.x if settings.button_corner in ["top_left", "bottom_left"] else -settings.button_size.x - settings.button_margin.x
-	_button.offset_right = _button.offset_left + settings.button_size.x
-	_button.offset_top = settings.button_margin.y if settings.button_corner in ["top_left", "top_right"] else -settings.button_size.y - settings.button_margin.y
-	_button.offset_bottom = _button.offset_top + settings.button_size.y
-	_button.modulate.a = settings.button_alpha
-	_button.pressed.connect(open_report_form)
+	_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_button.offset_left = -BUTTON_SIZE.x - BUTTON_MARGIN.x
+	_button.offset_right = -BUTTON_MARGIN.x
+	_button.offset_top = BUTTON_MARGIN.y
+	_button.offset_bottom = BUTTON_MARGIN.y + BUTTON_SIZE.y
+	_button.modulate.a = 0.75
+	_button.pressed.connect(_open_report_form)
 	add_child(_button)
 	_build_panel()
 
@@ -176,17 +165,6 @@ func _bug_icon() -> Texture2D:
 	if error != OK:
 		return null
 	return ImageTexture.create_from_image(image)
-
-func _button_preset() -> int:
-	match settings.button_corner:
-		"top_left":
-			return Control.PRESET_TOP_LEFT
-		"bottom_left":
-			return Control.PRESET_BOTTOM_LEFT
-		"bottom_right":
-			return Control.PRESET_BOTTOM_RIGHT
-		_:
-			return Control.PRESET_TOP_RIGHT
 
 ## 画面の広さに合わせて文字と間隔を決める。
 ##
@@ -223,27 +201,11 @@ func _fit_to_screen() -> void:
 	if is_instance_valid(_body_edit):
 		_body_edit.custom_minimum_size = Vector2(0.0, base * 6.0)
 
-## 報告の画面で使うテーマを作る。書体の指定が無ければ `null` を返し、既定の
-## ままにする。
-##
-## 既定の書体は日本語の字を持たない。卓上では実行環境の書体が肩代わりするため
-## 気付けないが、肩代わりの無い環境（Webへ書き出したもの）では日本語がすべて
-## 豆腐になる。実際に配ったWeb版で、報告の画面の文字が全部四角になっていた。
-## 報告の画面が読めなければ、そもそも報告が届かない。
-##
-## 大きさはここでは決めない。画面の広さに合わせて場所ごとに指定してあるため
-## （`_apply_scale()`）、ここで既定を入れるとそちらと二重になる。
+## OSのフォントに頼らず、同梱フォントで日本語を表示します。
 func _ui_theme() -> Theme:
-	if _theme != null:
-		return _theme
-	if settings.font_path.is_empty():
-		return null
-	var font := load(settings.font_path) as Font
-	if font == null:
-		push_warning("書体を読めなかったため既定のままにする: %s" % settings.font_path)
-		return null
-	_theme = Theme.new()
-	_theme.default_font = font
+	if _theme == null:
+		_theme = Theme.new()
+		_theme.default_font = DEFAULT_FONT
 	return _theme
 
 func _build_panel() -> void:
@@ -449,13 +411,12 @@ func send_report(title: String, description: String, screenshot: Image = null) -
 	if title.is_empty():
 		_status_label.text = "見出しを書いてください。"
 		return ERR_INVALID_PARAMETER
-	_pending_payload = build_payload(title, description, screenshot).duplicate(true)
+	_pending_payload = _build_payload(title, description, screenshot).duplicate(true)
 	_sending = true
 	_send_button.disabled = true
 	_title_edit.editable = false
 	_body_edit.editable = false
 	_status_label.text = "送っています…"
-	report_started.emit()
 	if settings.endpoint.is_empty() or settings.repository.is_empty():
 		_finish(false, "", "MornIssueBridgeのURLとリポジトリを設定してください。")
 		return ERR_UNCONFIGURED
@@ -470,22 +431,18 @@ func _destination_note() -> String:
 	return "本文・画面・状況を送信し、%s にIssueを作成します。" % settings.repository
 
 ## 本文と画像を一緒に送信します。状況はMarkdown本文へ含めます。
-func build_payload(title: String, description: String, screenshot: Image = null) -> Dictionary:
+func _build_payload(title: String, description: String, screenshot: Image = null) -> Dictionary:
 	var payload := {
 		"repository": settings.repository,
 		"title": title,
-		"body": build_body(description, collect_context()),
-		"labels": settings.labels,
+		"body": _build_body(description, _collect_context()),
 	}
-	for key in ["reporter_id", "reporter_name"]:
-		if not String(settings.get(key)).is_empty():
-			payload[key] = settings.get(key)
 	if screenshot != null:
 		payload["screenshot_png_base64"] = Marshalls.raw_to_base64(screenshot.save_png_to_buffer())
 	return payload
 
 ## 状況を集める。決まった見出しで並べ、読む側が毎回同じ場所を見れば済むようにする。
-func collect_context() -> Dictionary:
+func _collect_context() -> Dictionary:
 	var viewport := get_viewport()
 	var context := {
 		"報告時刻": _timestamp(),
@@ -571,7 +528,7 @@ func _drop_blanks(rows: Dictionary) -> Dictionary:
 		kept[key] = value
 	return kept
 
-func build_body(description: String, context: Dictionary) -> String:
+func _build_body(description: String, context: Dictionary) -> String:
 	var lines := PackedStringArray()
 	lines.append("## 何が起きたか")
 	lines.append("")
