@@ -1,5 +1,10 @@
 extends SceneTree
 
+class TestReporter extends "res://gmorn_issue_maker.gd":
+	var opened_urls: Array[String] = []
+	func _open_created_issue() -> void:
+		opened_urls.append(_created_issue_url)
+
 var finished: Array = []
 
 func _initialize() -> void:
@@ -14,7 +19,7 @@ func _run() -> void:
 	var plugin := ConfigFile.new()
 	assert(plugin.load("res://plugin.cfg") == OK)
 	assert(plugin.get_value("plugin", "version") == maker_script.VERSION)
-	var reporter: Node = maker_script.new()
+	var reporter: Node = TestReporter.new()
 	root.add_child(reporter)
 	var font: Font = reporter._ui_theme().default_font
 	assert(font.resource_path.ends_with("fonts/default_font.tres"))
@@ -44,11 +49,21 @@ func _run() -> void:
 	assert(decoded.load_png_from_buffer(Marshalls.base64_to_raw(reduced.screenshot_png_base64)) == OK)
 	assert(decoded.get_width() * 1080 == decoded.get_height() * 1920, "縦横比が変わっています")
 	assert(screenshot.get_size() == Vector2i(1920, 1080) and screenshot.get_data() == pixels, "元画像が変わっています")
+	assert(not reporter._open_button.visible)
 	assert(reporter.send_report("成功", "詳細".repeat(800), screenshot) == OK)
 	assert(reporter.send_report("重複", "本文") == ERR_BUSY)
 	await reporter.report_finished
 	assert(finished[0] and finished[1] == "https://github.com/example/game/issues/42")
 	assert(_saved().is_empty(), "成功時に控えが残っています")
+	assert(reporter._open_button.visible and not reporter._send_button.visible)
+	reporter._open_button.pressed.emit()
+	if reporter.opened_urls != ["https://github.com/example/game/issues/42"]:
+		push_error("開くボタンから作成済みIssueのURLが渡されていません")
+		quit(1)
+		return
+	await reporter._open_report_form()
+	assert(not reporter._open_button.visible and reporter._send_button.visible)
+	assert(reporter._created_issue_url.is_empty())
 	for title: String in ["拒否", "ログイン画面", "不正な成功", "切断"]:
 		game["残機"] = 3
 		# フォームも同じ送信経路を使います。
@@ -59,6 +74,8 @@ func _run() -> void:
 		game["残機"] = 9
 		await reporter.report_finished
 		assert(not finished[0] and finished[1].is_empty(), title)
+		assert(not reporter._open_button.visible and reporter._send_button.visible)
+		assert(reporter._created_issue_url.is_empty())
 		assert(finished[2].contains("残しました"), finished[2])
 	assert(_saved().size() == 4, "控えが上書きされています")
 	for path: String in _saved():

@@ -46,7 +46,7 @@ const UI_MIN_SCALE := 0.85
 
 const LIBRARY_NAME := "GMornIssueMaker"
 ## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
-const VERSION := "0.5.2"
+const VERSION := "0.5.3"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -81,6 +81,8 @@ var _body_edit: TextEdit
 var _status_label: Label
 var _preview: TextureRect
 var _send_button: Button
+var _open_button: Button
+var _created_issue_url := ""
 var _request: HTTPRequest
 var _pending_payload: Dictionary = {}
 var _screenshot: Image
@@ -139,6 +141,9 @@ func _open_report_form() -> void:
 	_body_edit.text = ""
 	_status_label.text = ""
 	_send_button.disabled = false
+	_send_button.visible = true
+	_open_button.visible = false
+	_created_issue_url = ""
 	_panel.visible = true
 	_title_edit.grab_focus()
 
@@ -184,7 +189,7 @@ func _fit_to_screen() -> void:
 		_headline.add_theme_font_size_override("font_size", int(round(base * 1.4)))
 	for caption in _captions:
 		caption.add_theme_font_size_override("font_size", base)
-	for control in [_title_edit, _body_edit, _status_label, _send_button, _cancel_button]:
+	for control in [_title_edit, _body_edit, _status_label, _send_button, _open_button, _cancel_button]:
 		if is_instance_valid(control):
 			control.add_theme_font_size_override("font_size", base)
 	if is_instance_valid(_signature):
@@ -305,6 +310,12 @@ func _build_panel() -> void:
 	_send_button.pressed.connect(_send_report)
 	_dress_button(_send_button, true)
 	footer.add_child(_send_button)
+	_open_button = Button.new()
+	_open_button.text = "開く"
+	_open_button.visible = false
+	_open_button.pressed.connect(_open_created_issue)
+	_dress_button(_open_button, true)
+	footer.add_child(_open_button)
 	_footer = footer
 
 ## 見出しの小さいラベル
@@ -400,6 +411,13 @@ func _capture_screenshot() -> void:
 	_screenshot = image
 	_preview.texture = ImageTexture.create_from_image(image)
 
+func _open_created_issue() -> void:
+	if _created_issue_url.is_empty():
+		return
+	var error := OS.shell_open(_created_issue_url)
+	if error != OK:
+		_status_label.text = "開けませんでした（%d）: %s" % [error, _created_issue_url]
+
 func _send_report() -> void:
 	send_report(_title_edit.text, _body_edit.text, _screenshot)
 
@@ -414,6 +432,9 @@ func send_report(title: String, description: String, screenshot: Image = null) -
 		return ERR_INVALID_PARAMETER
 	_pending_payload = _build_payload(title, description, screenshot).duplicate(true)
 	_sending = true
+	_created_issue_url = ""
+	_open_button.visible = false
+	_send_button.visible = true
 	_send_button.disabled = true
 	_title_edit.editable = false
 	_body_edit.editable = false
@@ -594,6 +615,9 @@ func _finish(success: bool, url: String, message: String) -> void:
 	_pending_payload = {}
 	_sending = false
 	_send_button.disabled = success
+	_send_button.visible = not success
+	_created_issue_url = url if success else ""
+	_open_button.visible = success
 	_title_edit.editable = true
 	_body_edit.editable = true
 	_status_label.text = message
