@@ -1,9 +1,11 @@
 """ローカルHTTPサーバーを使ってGodotからの送信を検証します。"""
 import http.server
+import base64
 import json
 import os
 from pathlib import Path
 import shutil
+import random
 import subprocess
 import tempfile
 import threading
@@ -51,6 +53,7 @@ with tempfile.TemporaryDirectory(prefix='gmorn-issue-verify-') as directory:
     shutil.copytree(addon / 'fonts', target / 'fonts')
     (work / 'verify.gd').write_text((addon / 'verify.gd').read_text().replace('res://gmorn_', 'res://addons/gmorn_issue_maker/gmorn_'))
     shutil.copy(addon / 'plugin.cfg', work)
+    (work / 'noise.rgb').write_bytes(random.Random(0).randbytes(1920 * 1080 * 3))
     (work / 'project.godot').write_text('config_version=5\n[application]\nconfig/name="GMornIssueMaker Verify"\nconfig/features=PackedStringArray("4.7")\n')
     env = dict(os.environ)
     env.update(HOME=str(work / 'home'), XDG_DATA_HOME=str(work / 'data'))
@@ -71,5 +74,8 @@ with tempfile.TemporaryDirectory(prefix='gmorn-issue-verify-') as directory:
     assert len(requests) == 5, requests
     for payload in requests:
         assert payload.get('labels') == ['bug', 'in-game-report'], payload.get('labels')
+        png = base64.b64decode(payload['screenshot_png_base64'], validate=True)
+        assert 0 < len(png) <= 2 * 1024 * 1024, f'PNG容量超過: {len(png)} bytes'
+        assert png.startswith(b'\x89PNG\r\n\x1a\n')
     assert '詳細' * 800 in requests[0]['body']
     assert requests[0]['screenshot_png_base64'].startswith('iVBOR')

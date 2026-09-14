@@ -33,6 +33,17 @@ func _run() -> void:
 	assert(reporter.send_report(" ", "本文") == ERR_INVALID_PARAMETER)
 	assert(finished.is_empty())
 	var screenshot := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	var small: Dictionary = reporter._build_payload("小画像", "本文", screenshot)
+	assert(Marshalls.base64_to_raw(small.screenshot_png_base64) == screenshot.save_png_to_buffer())
+	assert(not reporter._build_payload("画像なし", "本文", Image.new()).has("screenshot_png_base64"))
+	var pixels := FileAccess.get_file_as_bytes("res://noise.rgb")
+	screenshot = Image.create_from_data(1920, 1080, false, Image.FORMAT_RGB8, pixels)
+	assert(screenshot.save_png_to_buffer().size() > 2 * 1024 * 1024, "容量超過の画像になっていません")
+	var reduced: Dictionary = reporter._build_payload("大画像", "本文", screenshot)
+	var decoded := Image.new()
+	assert(decoded.load_png_from_buffer(Marshalls.base64_to_raw(reduced.screenshot_png_base64)) == OK)
+	assert(decoded.get_width() * 1080 == decoded.get_height() * 1920, "縦横比が変わっています")
+	assert(screenshot.get_size() == Vector2i(1920, 1080) and screenshot.get_data() == pixels, "元画像が変わっています")
 	assert(reporter.send_report("成功", "詳細".repeat(800), screenshot) == OK)
 	assert(reporter.send_report("重複", "本文") == ERR_BUSY)
 	await reporter.report_finished
@@ -41,6 +52,7 @@ func _run() -> void:
 	for title: String in ["拒否", "ログイン画面", "不正な成功", "切断"]:
 		game["残機"] = 3
 		# フォームも同じ送信経路を使います。
+		reporter._screenshot = screenshot
 		reporter._title_edit.text = title
 		reporter._body_edit.text = "失敗時の本文"
 		reporter._send_report()

@@ -26,6 +26,7 @@ const BREADCRUMB_LIMIT := 30
 ## 画面を送るときの縦の上限。原寸のままだと数メガバイトになり、
 ## 中継サーバー側で弾かれやすい。
 const SCREENSHOT_MAX_HEIGHT := 1080
+const SCREENSHOT_MAX_BYTES := 2 * 1024 * 1024
 
 ## 報告の窓は画面いっぱいから余白を取って出す。取り込む側の設計解像度が
 ## 分からないので、固定の大きさにすると広い画面では豆粒になる。
@@ -45,7 +46,7 @@ const UI_MIN_SCALE := 0.85
 
 const LIBRARY_NAME := "GMornIssueMaker"
 ## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
-const VERSION := "0.5.1"
+const VERSION := "0.5.2"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -438,8 +439,14 @@ func _build_payload(title: String, description: String, screenshot: Image = null
 		"body": _build_body(description, _collect_context()),
 		"labels": ["bug", "in-game-report"],
 	}
-	if screenshot != null:
-		payload["screenshot_png_base64"] = Marshalls.raw_to_base64(screenshot.save_png_to_buffer())
+	if screenshot != null and not screenshot.is_empty():
+		var image := screenshot.duplicate() as Image
+		var png := image.save_png_to_buffer()
+		while png.size() > SCREENSHOT_MAX_BYTES:
+			image.resize(maxi(1, image.get_width() >> 1), maxi(1, image.get_height() >> 1), Image.INTERPOLATE_BILINEAR)
+			png = image.save_png_to_buffer()
+		if not png.is_empty():
+			payload["screenshot_png_base64"] = Marshalls.raw_to_base64(png)
 	return payload
 
 ## 状況を集める。決まった見出しで並べ、読む側が毎回同じ場所を見れば済むようにする。

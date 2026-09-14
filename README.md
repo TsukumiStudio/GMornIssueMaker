@@ -32,6 +32,8 @@ GMornIssueMaker.send_report("画面が進みません", "購入ボタンを押�
 
 第3引数に`Image`を渡すと画像を添付します。送信結果は`report_finished(success, url, message)`で受け取れます。
 
+画像はPNGで2 MiB以内になるまで自動で縮小します。渡した元画像は変更しません。
+
 ゲーム固有の状況は`add_context_provider()`、直前の操作は`leave_breadcrumb()`で添えられます。
 
 送信に失敗した場合は、報告の控えを`user://gmorn_issue_maker/`に保存します。
