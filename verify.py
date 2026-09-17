@@ -51,7 +51,7 @@ with tempfile.TemporaryDirectory(prefix='gmorn-issue-verify-') as directory:
     for source in [*addon.glob('*.gd'), addon / 'plugin.cfg']:
         shutil.copy(source, target)
     shutil.copytree(addon / 'fonts', target / 'fonts')
-    (work / 'verify.gd').write_text((addon / 'verify.gd').read_text().replace('res://gmorn_', 'res://addons/gmorn_issue_maker/gmorn_'))
+    shutil.copy(addon / 'verify.gd', work)
     shutil.copy(addon / 'plugin.cfg', work)
     (work / 'noise.rgb').write_bytes(random.Random(0).randbytes(1920 * 1080 * 3))
     (work / 'project.godot').write_text('config_version=5\n[application]\nconfig/name="GMornIssueMaker Verify"\nconfig/features=PackedStringArray("4.7")\n')

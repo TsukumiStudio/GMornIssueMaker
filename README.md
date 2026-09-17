@@ -38,6 +38,11 @@ GMornIssueMaker.send_report("画面が進みません", "購入ボタンを押�
 
 送信に失敗した場合は、報告の控えを`user://gmorn_issue_maker/`に保存します。
 
+## 検証
+
+`sh verify.sh` で一時プロジェクトとローカルHTTPサーバーを使って検証します。GitHubへは送信しません。
+検証スクリプトの参照先も `res://addons/gmorn_issue_maker/` に揃え、取り込み先のEditorでそのまま読み込める状態を保ちます。検証時のソース書き換えは行いません。
+
 ## ライセンス
 
 コードは[The Unlicense](UNLICENSE)、同梱の[Noto Sans JP](https://github.com/google/fonts/tree/66a36c8c94b1a5d992ee4e7f392fccfe4945767c/ofl/notosansjp)は[SIL Open Font License 1.1](fonts/OFL.txt)です。

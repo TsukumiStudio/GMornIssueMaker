@@ -1,6 +1,6 @@
 extends SceneTree
 
-class TestReporter extends "res://gmorn_issue_maker.gd":
+class TestReporter extends "res://addons/gmorn_issue_maker/gmorn_issue_maker.gd":
 	var opened_urls: Array[String] = []
 	func _open_created_issue() -> void:
 		opened_urls.append(_created_issue_url)
@@ -11,11 +11,11 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
-	var settings_script := load("res://gmorn_issue_settings.gd")
+	var settings_script := load("res://addons/gmorn_issue_maker/gmorn_issue_settings.gd")
 	var defaults: RefCounted = settings_script.new()
 	defaults.load_from_project()
 	assert(defaults.endpoint.is_empty() and defaults.repository.is_empty())
-	var maker_script := load("res://gmorn_issue_maker.gd")
+	var maker_script := load("res://addons/gmorn_issue_maker/gmorn_issue_maker.gd")
 	var plugin := ConfigFile.new()
 	assert(plugin.load("res://plugin.cfg") == OK)
 	assert(plugin.get_value("plugin", "version") == maker_script.VERSION)
