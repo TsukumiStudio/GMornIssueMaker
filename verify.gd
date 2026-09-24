@@ -39,6 +39,11 @@ func _run() -> void:
 	assert(finished.is_empty())
 	var screenshot := Image.create(1, 1, false, Image.FORMAT_RGBA8)
 	var small: Dictionary = reporter._build_payload("小画像", "本文", screenshot)
+	assert(small.body == "## 何が起きたか\n\n本文")
+	assert(small.report_markdown.begins_with("# 小画像\n\n"))
+	assert(small.report_markdown.contains("## 環境") and small.report_markdown.contains("ショップを開きました"))
+	assert(not small.body.contains("## 環境"))
+	assert(reporter._build_payload("空欄", "").body == "## 何が起きたか\n\n（記入なし）")
 	assert(Marshalls.base64_to_raw(small.screenshot_png_base64) == screenshot.save_png_to_buffer())
 	assert(not reporter._build_payload("画像なし", "本文", Image.new()).has("screenshot_png_base64"))
 	var pixels := FileAccess.get_file_as_bytes("res://noise.rgb")
@@ -80,8 +85,9 @@ func _run() -> void:
 	assert(_saved().size() == 4, "控えが上書きされています")
 	for path: String in _saved():
 		var payload: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
-		assert(payload.body.contains("| 残機 | 3 |"), "送信時の状況が保存されていません")
-		assert(payload.body.contains("ショップを開きました"))
+		assert(payload.body == "## 何が起きたか\n\n失敗時の本文")
+		assert(payload.report_markdown.contains("| 残機 | 3 |"), "送信時の状況が保存されていません")
+		assert(payload.report_markdown.contains("ショップを開きました"))
 		assert(payload.repository == "example/game")
 	reporter.settings.endpoint = ""
 	assert(reporter.send_report("設定なし", "本文") == ERR_UNCONFIGURED)

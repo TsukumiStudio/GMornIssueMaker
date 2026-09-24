@@ -46,7 +46,7 @@ const UI_MIN_SCALE := 0.85
 
 const LIBRARY_NAME := "GMornIssueMaker"
 ## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
-const VERSION := "0.5.3"
+const VERSION := "0.6.0"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
 ## ボタンに出す虫の絵。
@@ -452,12 +452,13 @@ func send_report(title: String, description: String, screenshot: Image = null) -
 func _destination_note() -> String:
 	return "本文・画面・状況を送信し、%s にIssueを作成します。" % settings.repository
 
-## 本文と画像を一緒に送信します。状況はMarkdown本文へ含めます。
+## Issue本文は要点だけ。状況と画像はBridgeからMornDropの詳細レポートへ保存する。
 func _build_payload(title: String, description: String, screenshot: Image = null) -> Dictionary:
 	var payload := {
 		"repository": settings.repository,
 		"title": title,
-		"body": _build_body(description, _collect_context()),
+		"body": _build_summary(description),
+		"report_markdown": "# %s\n\n%s" % [title, _build_body(description, _collect_context())],
 		"labels": ["bug", "in-game-report"],
 	}
 	if screenshot != null and not screenshot.is_empty():
@@ -557,12 +558,11 @@ func _drop_blanks(rows: Dictionary) -> Dictionary:
 		kept[key] = value
 	return kept
 
+func _build_summary(description: String) -> String:
+	return "## 何が起きたか\n\n" + (description.strip_edges() if not description.strip_edges().is_empty() else "（記入なし）")
+
 func _build_body(description: String, context: Dictionary) -> String:
-	var lines := PackedStringArray()
-	lines.append("## 何が起きたか")
-	lines.append("")
-	lines.append(description.strip_edges() if not description.strip_edges().is_empty() else "（記入なし）")
-	lines.append("")
+	var lines := PackedStringArray([_build_summary(description), ""])
 	for section: String in ["アプリ", "環境", "画面", "実行", "ゲームの状況"]:
 		if not context.has(section):
 			continue

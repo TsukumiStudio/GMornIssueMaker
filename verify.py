@@ -21,7 +21,11 @@ class Bridge(http.server.BaseHTTPRequestHandler):
         assert not self.headers.get('X-GMorn-Token')
         assert not self.headers.get('Authorization')
         assert payload['repository'] == 'example/game'
-        assert set(payload) <= {'repository', 'title', 'body', 'labels', 'screenshot_png_base64'}
+        assert set(payload) <= {'repository', 'title', 'body', 'labels', 'screenshot_png_base64', 'report_markdown'}
+        assert payload['body'].startswith('## 何が起きたか\n\n')
+        assert '## 環境' not in payload['body']
+        assert '## 環境' in payload['report_markdown']
+        assert '| 残機 | 3 |' in payload['report_markdown']
         status, body = 201, {'html_url': 'https://github.com/example/game/issues/42', 'number': 42}
         if payload['title'] == '拒否':
             status, body = 429, {'error': '送信回数の上限です。'}

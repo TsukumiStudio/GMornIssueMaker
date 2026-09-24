@@ -6,7 +6,7 @@ Godotから[MornIssueBridge](https://github.com/TsukumiStudio/MornIssueBridge)�
 
 ## 環境構築
 
-1. [MornIssueBridge](https://github.com/TsukumiStudio/MornIssueBridge#環境構築)をデプロイします。
+1. `report_markdown` に対応した[MornIssueBridge](https://github.com/TsukumiStudio/MornIssueBridge#環境構築)を先にデプロイし、MornDropへの保存を設定します。旧Bridgeは詳細レポートを保存しないため、アドオン0.6.0への更新より先に反映してください。
 2. このリポジトリを`addons/gmorn_issue_maker`に配置し、Godotの「プロジェクト設定 → プラグイン」で有効にします。
 3. `project.godot`に送信先のURLとリポジトリを設定します。
 
@@ -20,7 +20,7 @@ repository="owner/repo"
 
 ## 送信方法
 
-画面右上の報告ボタンを押し、見出しと本文を入力して送信します。スクリーンショットとゲームの状況が添付され、結果がフォームに表示されます。成功すると「送信する」が「開く」に切り替わり、押すと作成したIssueを既定のブラウザで開きます。
+画面右上の報告ボタンを押し、見出しと本文を入力して送信します。Issueにはタイトル・「何が起きたか」・詳細レポートへのリンクだけを載せます。スクリーンショット、環境、ゲームの状況、直前の操作、報告時刻は、MornIssueBridgeがMornDropのMarkdownレポートへまとめます。成功すると「送信する」が「開く」に切り替わり、押すと作成したIssueを既定のブラウザで開きます。
 
 作成するIssueには`bug`と`in-game-report`のラベルが付きます。
 
@@ -36,7 +36,7 @@ GMornIssueMaker.send_report("画面が進みません", "購入ボタンを押�
 
 ゲーム固有の状況は`add_context_provider()`、直前の操作は`leave_breadcrumb()`で添えられます。
 
-送信に失敗した場合は、報告の控えを`user://gmorn_issue_maker/`に保存します。
+送信に失敗した場合は、要点・詳細・画像を含む報告の控えを`user://gmorn_issue_maker/`に保存します。詳細や画像をMornDropへ保存できない場合はIssueを作らず、控えを残します。MornDropの通常ファイルは参照が30日途絶えると削除されます。
 
 ## 検証
 
