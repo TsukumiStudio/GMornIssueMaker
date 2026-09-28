@@ -95,7 +95,6 @@ var _cancel_button: Button
 var _box: VBoxContainer
 var _inset: MarginContainer
 var _footer: HBoxContainer
-var _destination: Label
 var _signature: Label
 
 func _ready() -> void:
@@ -135,7 +134,6 @@ func _open_report_form() -> void:
 	if _sending or not is_instance_valid(_panel) or _panel.visible:
 		return
 	_fit_to_screen()
-	_destination.text = _destination_note()
 	await _capture_screenshot()
 	_title_edit.text = ""
 	_body_edit.text = ""
@@ -264,14 +262,16 @@ func _build_panel() -> void:
 
 	_captions.append(_caption("タイトル", box))
 	_title_edit = LineEdit.new()
-	_title_edit.placeholder_text = "何が起きたかを一行で"
+	_title_edit.placeholder_text = "何が起きたか"
 	_dress_input(_title_edit)
 	box.add_child(_title_edit)
 
 	_captions.append(_caption("詳細", box))
 	_body_edit = TextEdit.new()
-	_body_edit.placeholder_text = "何をしたら起きたか"
+	_body_edit.placeholder_text = "何をしたか"
 	_body_edit.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# 書く量が多いのはこちら。写しより広く取る。
+	_body_edit.size_flags_stretch_ratio = 1.5
 	_dress_input(_body_edit)
 	box.add_child(_body_edit)
 
@@ -279,14 +279,6 @@ func _build_panel() -> void:
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status_label.add_theme_color_override("font_color", ACCENT_COLOR)
 	box.add_child(_status_label)
-
-	# 送信前に、Issueの作成先を表示します。
-	_destination = Label.new()
-	_destination.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_destination.add_theme_color_override("font_color", MUTED_COLOR)
-	_destination.text = _destination_note()
-	_captions.append(_destination)
-	box.add_child(_destination)
 
 	# いちばん下の段。左に部品の名前と版、右に釦。
 	# 版が分かると、報告を受けた側が「どの版の部品か」を聞き返さずに済む。
@@ -448,9 +440,6 @@ func send_report(title: String, description: String, screenshot: Image = null) -
 	if error != OK:
 		_finish(false, "", "送信を開始できませんでした（%d）。" % error)
 	return error
-
-func _destination_note() -> String:
-	return "本文・画面・状況を送信し、%s にIssueを作成します。" % settings.repository
 
 ## Issue本文は要点だけ。状況と画像はBridgeからMornDropの詳細レポートへ保存する。
 func _build_payload(title: String, description: String, screenshot: Image = null) -> Dictionary:
