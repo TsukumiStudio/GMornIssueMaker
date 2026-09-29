@@ -503,7 +503,9 @@ func _collect_context() -> Dictionary:
 ## 状況は畳んだ塊ではなく、見出し付きの表と箇条書きで並べる。読むのが人でも
 ## 機械でも、同じ見出しを辿れば同じ場所に同じ意味の値がある形にする。
 ## 環境の欄。ブラウザでは `OS.get_version()` や `OS.get_processor_name()` が
-## 空で返るので、代わりに閲覧ソフト側から拾える範囲を入れる。
+## 空で返るので、代わりにエンジンの機能タグとコア数から分かる範囲を入れる。
+## `javascript_eval=no` のエンジン（MornDrop の再生ページなど）では
+## JavaScriptBridge が null を返すため、JS に頼るのは閲覧ソフト名だけにする。
 ## 空のまま並べると「調べたが分からなかった」のか「そもそも見ていない」のか
 ## 読む側に区別がつかないので、埋まらない行は出さない。
 func _environment_rows() -> Dictionary:
@@ -521,14 +523,20 @@ func _environment_rows() -> Dictionary:
 	if OS.has_feature("web"):
 		rows["閲覧ソフト"] = _browser_info("navigator.userAgent")
 		if String(rows["OSの版"]).is_empty():
-			rows["OSの版"] = _browser_info("navigator.platform")
+			rows["OSの版"] = _web_host_os()
 		if String(rows["CPU"]).is_empty():
-			var cores := _browser_info("String(navigator.hardwareConcurrency || '')")
-			if not cores.is_empty():
-				rows["CPU"] = "%s コア" % cores
+			rows["CPU"] = "%d コア" % OS.get_processor_count()
 	return _drop_blanks(rows)
 
-## ブラウザから1つ値を取る。ブラウザ以外や取れないときは空を返す。
+## Web で動いているときの閲覧側 OS を機能タグから返す。分からなければ空。
+func _web_host_os() -> String:
+	for pair in [["web_windows", "Windows"], ["web_macos", "macOS"],
+			["web_linuxbsd", "Linux/BSD"], ["web_android", "Android"], ["web_ios", "iOS"]]:
+		if OS.has_feature(pair[0]):
+			return pair[1]
+	return ""
+
+## ブラウザから1つ値を取る。ブラウザ以外や JS が使えないエンジンでは空を返す。
 func _browser_info(expression: String) -> String:
 	if not OS.has_feature("web"):
 		return ""
