@@ -1,6 +1,5 @@
 extends RefCounted
 
-## MornIssueBridgeのURLとIssue作成先です。
 var endpoint := ""
 var repository := ""
 

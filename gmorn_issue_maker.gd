@@ -1,72 +1,50 @@
 extends CanvasLayer
 
-## 遊んでいるその場から不具合を報告するための常駐部品。
+## 遊んでいるその場から不具合を報告する常駐部品。画面を撮り、状況を添えて
+## 中継サーバー（MornIssueBridge）へ送り、サーバーが GitHub Issue を作る。
 ##
-## 画面の隅に小さな報告ボタンを出す。押すとその瞬間の画面を撮り、いま動いて
-## いる状況を添えて中継サーバーへ送る。中継サーバーがGitHubのIssueを作る。
-##
-## ゲーム側にGitHubのトークンを持たせない。配布物の中に入れた鍵は取り出せる
-## ため、書き込み権限のあるトークンを同梱できない。代わりに、送り先だけを
-## 設定に持ち、鍵は中継サーバーが持つ。
-##
-## 報告の中身は、人が読むためだけでなく、状況を機械が追えるように組み立てる。
-## 版、環境、画面の大きさ、いま開いているシーン、直前の出来事、ゲーム固有の
-## 値を決まった見出しで並べる。
-##
-## 使い方は README.md を参照。ゲーム固有の値は
-## `GMornIssueMaker.add_context_provider(callable)` で足す。
+## ゲーム側に GitHub のトークンを持たせない。配布物に入れた鍵は取り出せる。
+## 鍵は中継サーバーが持ち、ゲームは送り先だけを設定に持つ。
 
-## 中継サーバーが失敗したとき、報告を書き出す置き場。送れなかった報告を
-## 捨てない。あとから手で送れる。
+## 送れなかった報告は捨てずにここへ書き出す。あとから手で送れる。
 const FALLBACK_DIRECTORY := "user://gmorn_issue_maker"
-## 送信の待ち時間（秒）。押したまま固まらない長さにする。
+## 押したまま固まらない長さ。
 const REQUEST_TIMEOUT := 20.0
-## 覚えておく出来事の数。多すぎると本文が読めなくなる。
 const BREADCRUMB_LIMIT := 30
-## 画面を送るときの縦の上限。原寸のままだと数メガバイトになり、
-## 中継サーバー側で弾かれやすい。
+## 原寸のままだと数メガバイトになり、中継サーバー側で弾かれる。
 const SCREENSHOT_MAX_HEIGHT := 1080
 const SCREENSHOT_MAX_BYTES := 2 * 1024 * 1024
 
-## 報告の窓は画面いっぱいから余白を取って出す。取り込む側の設計解像度が
-## 分からないので、固定の大きさにすると広い画面では豆粒になる。
+## 窓は固定の大きさにせず割合で置く。取り込む側の設計解像度が分からない。
 const PANEL_MARGIN_RATIO := 0.06
 
-## 既定の文字の大きさが読める画面の高さ。これより広い画面では、その比で拡大する。
-## 縦2142のような設計だと、既定の16pxは実質読めない。
+## 既定の文字の大きさ（16px）が読める画面の高さ。これより広い画面ではその比で拡大する。
 const UI_REFERENCE_HEIGHT := 720.0
-## 同じことを幅でも見る。**高さだけを見ていたので、縦長の携帯では拡大されて
-## 幅がさらに足りなくなっていた** — 詰まっているのは幅なのに、である。
-## 390x844 では 1.17 倍・19px になり、要る幅 392px に対して取り分は 343px。
-## [送信する] が「送信す」までしか出ず、**報告しようとした人が送れなかった**。
+## 幅も見る。高さだけだと縦長の携帯で拡大され、詰まっている幅がさらに足りなくなり
+## 釦の文字が切れる。
 const UI_REFERENCE_WIDTH := 540.0
 const UI_MAX_SCALE := 6.0
-## 狭い画面では既定より縮める。下限を 1.0 で止めると、上の取り違えが残る。
+## 下限を 1.0 にしない。狭い画面では既定より縮める必要がある。
 const UI_MIN_SCALE := 0.85
 
 const LIBRARY_NAME := "GMornIssueMaker"
-## plugin.cfg の version と必ず揃える（verify.gd が突き合わせる）
+## plugin.cfg の version と揃える（verify.gd が突き合わせる）。
 const VERSION := "0.6.0"
 const ACCENT_COLOR := Color(0.98, 0.78, 0.35)
 const MUTED_COLOR := Color(0.62, 0.62, 0.68)
-## ボタンに出す虫の絵。
-##
-## 文字で「不具合報告」と出すと画面の隅を大きく占める。絵文字は環境の書体に
-## 左右されて豆腐になることがあるため、絵そのものを持つ。SVGを実行時に
-## 起こすので、画像ファイルを同梱しなくてよい（submodule で配る部品なので、
-## 付属物は少ないほど扱いやすい）。
+## 釦の虫の絵。絵文字は環境の書体で豆腐になり、画像ファイルは submodule の付属物を
+## 増やすので、SVG 文字列を実行時に起こす。
 const BUG_ICON_SVG := """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 <path d="M9 4.5 7.5 2.6M15 4.5l1.5-1.9"/>
 <rect x="8" y="6" width="8" height="13" rx="4"/>
 <path d="M8 10.5H4.6M8 15H4.6M16 10.5h3.4M16 15h3.4M6.2 7.4 4.4 6M6.2 18 4.4 19.6M17.8 7.4 19.6 6M17.8 18 19.6 19.6M12 6v13"/>
 </svg>"""
-## 虫の絵の一辺（画素）。ボタンより少し小さくして余白を残す。
 const BUG_ICON_SIZE := 22
 const BUTTON_SIZE := Vector2(40.0, 40.0)
 const BUTTON_MARGIN := Vector2(12.0, 12.0)
 
-## 設定の実体。`class_name` で引くとエディタが一度走査するまで名前が引けず、
-## 取り込んだ直後の自動実行で落ちる。読み込みで直に指す。
+## `class_name` で引かない。エディタが一度走査するまで名前が引けず、取り込んだ直後の
+## 自動実行で落ちる。
 const SETTINGS_SCRIPT := preload("gmorn_issue_settings.gd")
 const DEFAULT_FONT := preload("fonts/default_font.tres")
 
@@ -100,7 +78,7 @@ var _signature: Label
 func _ready() -> void:
 	settings = SETTINGS_SCRIPT.new()
 	settings.load_from_project()
-	# いちばん上へ出す。遊びの画面がどれだけ層を重ねても、報告ボタンは隠れない。
+	# 遊びの画面がどれだけ層を重ねても報告ボタンが隠れない層。
 	layer = 512
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build_ui()
@@ -111,25 +89,18 @@ func _ready() -> void:
 	add_child(_request)
 	_request.request_completed.connect(_on_request_completed)
 
-## ゲーム固有の状況を足す。呼ばれた側は `Dictionary` を返す。
-##
-## 例:
-##   GMornIssueMaker.add_context_provider(func() -> Dictionary:
-##       return {"面": current_stage_name(), "残機": player.lives})
+## ゲーム固有の状況を報告へ足す。`provider` は `Dictionary` を返す。
 func add_context_provider(provider: Callable) -> void:
 	if not _context_providers.has(provider):
 		_context_providers.append(provider)
 
-## 出来事を記録する。報告に直前の流れとして並ぶ。
-##
-## 不具合報告でいちばん足りないのは「何をしたか」である。画面遷移や購入など
-## 節目で呼んでおくと、報告を読む側が経路を追える。
+## 画面遷移や購入などの節目で呼ぶと、報告に「直前の出来事」として並ぶ。
 func leave_breadcrumb(message: String) -> void:
 	_breadcrumbs.append("%s %s" % [_timestamp(), message])
 	if _breadcrumbs.size() > BREADCRUMB_LIMIT:
 		_breadcrumbs.remove_at(0)
 
-## 押されたときと同じ流れを外から始める。任意のキーへ割り当てたいときに使う。
+## 報告釦と同じ流れ。任意のキーへ割り当てるときに外から呼ぶ。
 func _open_report_form() -> void:
 	if _sending or not is_instance_valid(_panel) or _panel.visible:
 		return
@@ -162,7 +133,6 @@ func _build_ui() -> void:
 	add_child(_button)
 	_build_panel()
 
-## 虫の絵を起こす。書体に頼らないので、どの環境でも同じ形が出る。
 func _bug_icon() -> Texture2D:
 	var image := Image.new()
 	var error := image.load_svg_from_string(BUG_ICON_SVG, float(BUG_ICON_SIZE) / 24.0)
@@ -170,15 +140,12 @@ func _bug_icon() -> Texture2D:
 		return null
 	return ImageTexture.create_from_image(image)
 
-## 画面の広さに合わせて文字と間隔を決める。
-##
-## 部品の側では取り込む先の設計解像度を選べない。縦2142の企画に既定の16pxを
-## 出すと、画面のごく一部に読めない字が並ぶ。開くたびに測って合わせる。
+## 取り込む先の設計解像度を選べないので、開くたびに測って文字と間隔を決める。
 func _fit_to_screen() -> void:
 	if not is_instance_valid(_panel):
 		return
 	var view := get_viewport().get_visible_rect().size
-	# **狭い方に合わせる。** 広い方に合わせると、もう一方からはみ出す。
+	# 狭い方に合わせる。広い方に合わせると、もう一方からはみ出す。
 	var scale := clampf(minf(
 		float(view.x) / UI_REFERENCE_WIDTH,
 		float(view.y) / UI_REFERENCE_HEIGHT), UI_MIN_SCALE, UI_MAX_SCALE)
@@ -191,21 +158,19 @@ func _fit_to_screen() -> void:
 		if is_instance_valid(control):
 			control.add_theme_font_size_override("font_size", base)
 	if is_instance_valid(_signature):
-		# 部品の名前と版は控えめに。読ませたいのは報告の中身のほう。
 		_signature.add_theme_font_size_override("font_size", int(round(base * 0.8)))
 	if is_instance_valid(_box):
 		_box.add_theme_constant_override("separation", int(round(10.0 * scale)))
 	if is_instance_valid(_footer):
 		_footer.add_theme_constant_override("separation", int(round(12.0 * scale)))
 	if is_instance_valid(_inset):
-		# 窓の縁と中身のあいだ。狭いと文字が枠に貼り付いて読みにくい。
 		var pad := int(round(22.0 * scale))
 		for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
 			_inset.add_theme_constant_override(side, pad)
 	if is_instance_valid(_body_edit):
 		_body_edit.custom_minimum_size = Vector2(0.0, base * 6.0)
 
-## OSのフォントに頼らず、同梱フォントで日本語を表示します。
+## OS のフォントに頼らず同梱フォントで日本語を出す。
 func _ui_theme() -> Theme:
 	if _theme == null:
 		_theme = Theme.new()
@@ -217,8 +182,7 @@ func _build_panel() -> void:
 	_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_panel.visible = false
 	_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	# 書体は報告の画面そのものへ付ける。テーマは子へ伝わるので、部品を足す
-	# たびに指定し直さなくてよい。
+	# テーマは子へ伝わるので、部品を足すたびに指定し直さない。
 	_panel.theme = _ui_theme()
 	add_child(_panel)
 
@@ -227,8 +191,6 @@ func _build_panel() -> void:
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_panel.add_child(dim)
 
-	# 画面いっぱいから余白を取る。取り込む側の設計解像度は分からないので、
-	# 固定の大きさにすると、広い画面では豆粒、狭い画面でははみ出す。割合で置く。
 	var frame := PanelContainer.new()
 	frame.anchor_left = PANEL_MARGIN_RATIO
 	frame.anchor_top = PANEL_MARGIN_RATIO
@@ -237,7 +199,7 @@ func _build_panel() -> void:
 	frame.add_theme_stylebox_override("panel", _panel_style())
 	_panel.add_child(frame)
 
-	# 窓の縁と中身のあいだ。文字と同じ比で広げるので _fit_to_screen が触る。
+	# 余白は文字と同じ比で広げるので _fit_to_screen が触る。
 	_inset = MarginContainer.new()
 	frame.add_child(_inset)
 
@@ -250,7 +212,7 @@ func _build_panel() -> void:
 	_headline.add_theme_color_override("font_color", ACCENT_COLOR)
 	box.add_child(_headline)
 
-	# 写しは暗い台紙に載せる。透過や白い絵でも輪郭が分かるようにするため。
+	# 暗い台紙に載せないと、透過や白い絵の輪郭が分からない。
 	var stage := PanelContainer.new()
 	stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stage.add_theme_stylebox_override("panel", _stage_style())
@@ -270,7 +232,6 @@ func _build_panel() -> void:
 	_body_edit = TextEdit.new()
 	_body_edit.placeholder_text = "何をしたか"
 	_body_edit.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	# 書く量が多いのはこちら。写しより広く取る。
 	_body_edit.size_flags_stretch_ratio = 1.5
 	_dress_input(_body_edit)
 	box.add_child(_body_edit)
@@ -280,8 +241,7 @@ func _build_panel() -> void:
 	_status_label.add_theme_color_override("font_color", ACCENT_COLOR)
 	box.add_child(_status_label)
 
-	# いちばん下の段。左に部品の名前と版、右に釦。
-	# 版が分かると、報告を受けた側が「どの版の部品か」を聞き返さずに済む。
+	# 部品の版を出しておくと、報告を受けた側が聞き返さずに済む。
 	var footer := HBoxContainer.new()
 	box.add_child(footer)
 	_signature = Label.new()
@@ -310,7 +270,6 @@ func _build_panel() -> void:
 	footer.add_child(_open_button)
 	_footer = footer
 
-## 見出しの小さいラベル
 func _caption(text: String, parent: Node) -> Label:
 	var label := Label.new()
 	label.text = text
@@ -318,17 +277,11 @@ func _caption(text: String, parent: Node) -> Label:
 	parent.add_child(label)
 	return label
 
-## 部品の版。**実行時は必ずこの定数から出す。**
-##
-## `plugin.cfg` から読む形にしたら、書き出した実行ファイルで空になった。
-## あれはエディタ用のメタ情報で、書き出しには含まれない。取り込む側に
-## 書き出し設定をいじらせるのは筋が悪いので、ここに持つ。
-##
-## `plugin.cfg` と食い違わないことは `verify.gd` が確かめる。
+## `plugin.cfg` から読まない。エディタ用のメタ情報で、書き出した実行ファイルには
+## 含まれず空になる。
 func _library_version() -> String:
 	return VERSION
 
-## 書き込む欄。背景を1段明るくして「ここに書く」と分かるようにする。
 func _dress_input(control: Control) -> void:
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = Color(0.17, 0.17, 0.2)
@@ -340,7 +293,6 @@ func _dress_input(control: Control) -> void:
 	control.add_theme_stylebox_override("normal", normal)
 	control.add_theme_stylebox_override("focus", focused)
 
-## 釦。送信だけを目立たせ、閉じるは控えめにする。
 func _dress_button(button: Button, primary: bool) -> void:
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = ACCENT_COLOR if primary else Color(0.24, 0.24, 0.28)
@@ -382,13 +334,9 @@ func _close_panel() -> void:
 	_screenshot = null
 	_preview.texture = null
 
-## その瞬間の画面を撮る。
-##
-## ボタンや入力欄が写り込むと、報告したかった画面が隠れる。撮る前に自分の
-## 描画を消し、描画が1回終わるのを待ってから読む。
+## 自分の釦が写り込まないよう、消してから描画1回を待って読む。
 func _capture_screenshot() -> void:
-	# 画面の無い動かし方では撮れない。待ち続けると押したまま固まるので、
-	# 撮らずに進む。報告そのものは状況だけで送れる。
+	# ヘッドレスでは frame_post_draw が来ず固まるので、撮らずに進む。
 	if DisplayServer.get_name() == "headless":
 		_screenshot = null
 		return
@@ -413,8 +361,8 @@ func _open_created_issue() -> void:
 func _send_report() -> void:
 	send_report(_title_edit.text, _body_edit.text, _screenshot)
 
-## MornIssueBridgeへ送信します。OKは通信開始を表し、結果はreport_finishedで通知します。
-## 同時送信はERR_BUSY、空の見出しはERR_INVALID_PARAMETERを返し、通知しません。
+## OK は通信開始を表し、結果は report_finished で通知する。
+## 同時送信は ERR_BUSY、空の見出しは ERR_INVALID_PARAMETER を返し、通知しない。
 func send_report(title: String, description: String, screenshot: Image = null) -> Error:
 	if _sending:
 		return ERR_BUSY
@@ -441,7 +389,7 @@ func send_report(title: String, description: String, screenshot: Image = null) -
 		_finish(false, "", "送信を開始できませんでした（%d）。" % error)
 	return error
 
-## Issue本文は要点だけ。状況と画像はBridgeからMornDropの詳細レポートへ保存する。
+## Issue 本文は要点だけ。状況と画像は Bridge が MornDrop の詳細レポートへ保存する。
 func _build_payload(title: String, description: String, screenshot: Image = null) -> Dictionary:
 	var payload := {
 		"repository": settings.repository,
@@ -460,7 +408,7 @@ func _build_payload(title: String, description: String, screenshot: Image = null
 			payload["screenshot_png_base64"] = Marshalls.raw_to_base64(png)
 	return payload
 
-## 状況を集める。決まった見出しで並べ、読む側が毎回同じ場所を見れば済むようにする。
+## 見出しは固定。読む側（人と機械）が毎回同じ場所を見れば済むようにする。
 func _collect_context() -> Dictionary:
 	var viewport := get_viewport()
 	var context := {
@@ -480,7 +428,7 @@ func _collect_context() -> Dictionary:
 			"毎秒の描画数": Engine.get_frames_per_second(),
 			"起動からの秒数": snappedf(float(Time.get_ticks_msec()) / 1000.0, 0.1),
 			"ノード数": Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
-			# ブラウザでは 0 が返る。0 と書くと「使っていない」と読めてしまう
+			# ブラウザでは 0 が返るので _drop_blanks で落ちる。0 と書くと「使っていない」と読める。
 			"静的メモリ": Performance.get_monitor(Performance.MEMORY_STATIC),
 			"開いているシーン": _current_scene_path(),
 		}),
@@ -498,16 +446,9 @@ func _collect_context() -> Dictionary:
 		context["ゲームの状況"] = game
 	return context
 
-## Issue の本文を組み立てる。
-##
-## 状況は畳んだ塊ではなく、見出し付きの表と箇条書きで並べる。読むのが人でも
-## 機械でも、同じ見出しを辿れば同じ場所に同じ意味の値がある形にする。
-## 環境の欄。ブラウザでは `OS.get_version()` や `OS.get_processor_name()` が
-## 空で返るので、代わりにエンジンの機能タグとコア数から分かる範囲を入れる。
-## `javascript_eval=no` のエンジン（MornDrop の再生ページなど）では
-## JavaScriptBridge が null を返すため、JS に頼るのは閲覧ソフト名だけにする。
-## 空のまま並べると「調べたが分からなかった」のか「そもそも見ていない」のか
-## 読む側に区別がつかないので、埋まらない行は出さない。
+## ブラウザでは `OS.get_version()` や `OS.get_processor_name()` が空で返るので、
+## 機能タグとコア数で補う。`javascript_eval=no` のエンジンでは JavaScriptBridge が
+## null を返すため、JS に頼るのは閲覧ソフト名だけにする。
 func _environment_rows() -> Dictionary:
 	var rows := {
 		"OS": OS.get_name(),
@@ -528,7 +469,6 @@ func _environment_rows() -> Dictionary:
 			rows["CPU"] = "%d コア" % OS.get_processor_count()
 	return _drop_blanks(rows)
 
-## Web で動いているときの閲覧側 OS を機能タグから返す。分からなければ空。
 func _web_host_os() -> String:
 	for pair in [["web_windows", "Windows"], ["web_macos", "macOS"],
 			["web_linuxbsd", "Linux/BSD"], ["web_android", "Android"], ["web_ios", "iOS"]]:
@@ -536,14 +476,13 @@ func _web_host_os() -> String:
 			return pair[1]
 	return ""
 
-## ブラウザから1つ値を取る。ブラウザ以外や JS が使えないエンジンでは空を返す。
 func _browser_info(expression: String) -> String:
 	if not OS.has_feature("web"):
 		return ""
 	var value: Variant = JavaScriptBridge.eval(expression, true)
 	return "" if value == null else String(value)
 
-## 空・0 の行を落とす。埋まらなかったものを並べても読む側の役に立たない。
+## 空のまま並べると「調べたが分からなかった」のか「見ていない」のか区別がつかない。
 func _drop_blanks(rows: Dictionary) -> Dictionary:
 	var kept := {}
 	for key in rows:
@@ -645,7 +584,6 @@ func _valid_fallback(path: String, serialized: String) -> bool:
 	var content := FileAccess.get_file_as_string(path)
 	return content == serialized and JSON.parse_string(content) is Dictionary
 
-## ファイル名へ使える時刻。記号を落として並び順が保てる形にする。
 func _file_stamp() -> String:
 	return Time.get_datetime_string_from_system(false, false) \
 		.replace(":", "").replace("-", "").replace("T", "_")

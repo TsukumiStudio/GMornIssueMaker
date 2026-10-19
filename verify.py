@@ -1,4 +1,4 @@
-"""ローカルHTTPサーバーを使ってGodotからの送信を検証します。"""
+"""ローカル HTTP サーバーを Bridge に見立てて Godot からの送信を検証する。"""
 import http.server
 import base64
 import json

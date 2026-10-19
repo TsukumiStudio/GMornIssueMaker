@@ -6,7 +6,7 @@ Godotから[MornIssueBridge](https://github.com/TsukumiStudio/MornIssueBridge)�
 
 ## 環境構築
 
-1. `report_markdown` に対応した[MornIssueBridge](https://github.com/TsukumiStudio/MornIssueBridge#環境構築)を先にデプロイし、MornDropへの保存を設定します。旧Bridgeは詳細レポートを保存しないため、アドオン0.6.0への更新より先に反映してください。
+1. `report_markdown` に対応した[MornIssueBridge](https://github.com/TsukumiStudio/MornIssueBridge#環境構築)を先にデプロイし、MornDropへの保存を設定します。
 2. このリポジトリを`addons/gmorn_issue_maker`に配置し、Godotの「プロジェクト設定 → プラグイン」で有効にします。
 3. `project.godot`に送信先のURLとリポジトリを設定します。
 
@@ -41,7 +41,6 @@ GMornIssueMaker.send_report("画面が進みません", "購入ボタンを押�
 ## 検証
 
 `sh verify.sh` で一時プロジェクトとローカルHTTPサーバーを使って検証します。GitHubへは送信しません。
-検証スクリプトの参照先も `res://addons/gmorn_issue_maker/` に揃え、取り込み先のEditorでそのまま読み込める状態を保ちます。検証時のソース書き換えは行いません。
 
 ## ライセンス
 

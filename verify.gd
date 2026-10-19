@@ -71,7 +71,7 @@ func _run() -> void:
 	assert(reporter._created_issue_url.is_empty())
 	for title: String in ["拒否", "ログイン画面", "不正な成功", "切断"]:
 		game["残機"] = 3
-		# フォームも同じ送信経路を使います。
+		# フォームからの送信も同じ経路を通る。
 		reporter._screenshot = screenshot
 		reporter._title_edit.text = title
 		reporter._body_edit.text = "失敗時の本文"
