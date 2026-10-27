@@ -334,6 +334,15 @@ func _close_panel() -> void:
 	_screenshot = null
 	_preview.texture = null
 
+## 報告画面のGUIが処理しなかった入力だけ、背面のゲームへ渡さない。
+func _unhandled_input(event: InputEvent) -> void:
+	if not is_instance_valid(_panel) or not _panel.is_visible_in_tree():
+		return
+	if event is InputEventKey or event is InputEventJoypadButton \
+			or event is InputEventJoypadMotion or event is InputEventMouseButton \
+			or event is InputEventScreenTouch or event is InputEventAction:
+		get_viewport().set_input_as_handled()
+
 ## 自分の釦が写り込まないよう、消してから描画1回を待って読む。
 func _capture_screenshot() -> void:
 	# ヘッドレスでは frame_post_draw が来ず固まるので、撮らずに進む。
