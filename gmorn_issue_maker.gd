@@ -1,14 +1,10 @@
 extends CanvasLayer
 
-## 遊んでいるその場から不具合を報告する常駐部品。画面を撮り、状況を添えて
-## 中継サーバー（MornIssueBridge）へ送り、サーバーが GitHub Issue を作る。
-##
 ## ゲーム側に GitHub のトークンを持たせない。配布物に入れた鍵は取り出せる。
 ## 鍵は中継サーバーが持ち、ゲームは送り先だけを設定に持つ。
 
 ## 送れなかった報告は捨てずにここへ書き出す。あとから手で送れる。
 const FALLBACK_DIRECTORY := "user://gmorn_issue_maker"
-## 押したまま固まらない長さ。
 const REQUEST_TIMEOUT := 20.0
 const BREADCRUMB_LIMIT := 30
 ## 原寸のままだと数メガバイトになり、中継サーバー側で弾かれる。
@@ -20,8 +16,7 @@ const PANEL_MARGIN_RATIO := 0.06
 
 ## 既定の文字の大きさ（16px）が読める画面の高さ。これより広い画面ではその比で拡大する。
 const UI_REFERENCE_HEIGHT := 720.0
-## 幅も見る。高さだけだと縦長の携帯で拡大され、詰まっている幅がさらに足りなくなり
-## 釦の文字が切れる。
+## 高さだけで拡大すると、縦長画面で釦の文字が切れる。
 const UI_REFERENCE_WIDTH := 540.0
 const UI_MAX_SCALE := 6.0
 ## 下限を 1.0 にしない。狭い画面では既定より縮める必要がある。
@@ -43,8 +38,7 @@ const BUG_ICON_SIZE := 22
 const BUTTON_SIZE := Vector2(40.0, 40.0)
 const BUTTON_MARGIN := Vector2(12.0, 12.0)
 
-## `class_name` で引かない。エディタが一度走査するまで名前が引けず、取り込んだ直後の
-## 自動実行で落ちる。
+## `class_name` はエディタの初回走査前に解決できないため使わない。
 const SETTINGS_SCRIPT := preload("gmorn_issue_settings.gd")
 const DEFAULT_FONT := preload("fonts/default_font.tres")
 
@@ -277,8 +271,7 @@ func _caption(text: String, parent: Node) -> Label:
 	parent.add_child(label)
 	return label
 
-## `plugin.cfg` から読まない。エディタ用のメタ情報で、書き出した実行ファイルには
-## 含まれず空になる。
+## `plugin.cfg` は書き出した実行ファイルに含まれないため読まない。
 func _library_version() -> String:
 	return VERSION
 
