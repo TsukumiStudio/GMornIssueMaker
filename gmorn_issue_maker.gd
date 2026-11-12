@@ -123,6 +123,8 @@ func _build_ui() -> void:
 	_button.offset_top = BUTTON_MARGIN.y
 	_button.offset_bottom = BUTTON_MARGIN.y + BUTTON_SIZE.y
 	_button.modulate.a = 0.75
+	_button.visible = bool(ProjectSettings.get_setting(
+		"gmorn_debug_menu/runtime_buttons_enabled", true))
 	_button.pressed.connect(_open_report_form)
 	add_child(_button)
 	_build_panel()
