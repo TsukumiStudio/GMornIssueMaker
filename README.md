@@ -36,7 +36,7 @@ GMornIssueMaker.send_report("画面が進みません", "購入ボタンを押�
 
 ゲーム固有の状況は`add_context_provider()`、直前の操作は`leave_breadcrumb()`で添えられます。
 
-送信に失敗した場合は、要点・詳細・画像を含む報告の控えを`user://gmorn_issue_maker/`に保存します。詳細や画像をMornDropへ保存できない場合はIssueを作らず、控えを残します。MornDropの通常ファイルは参照が30日途絶えると削除されます。
+送信に失敗した場合は、要点・詳細・画像を含む報告の控えを`user://gmorn_issue_maker/`に保存します。詳細や画像をMornDropへ保存できない場合はIssueを作らず、控えを残します。MornDropのファイルは参照が7日途絶えると削除されます。
 
 ## 検証
 
